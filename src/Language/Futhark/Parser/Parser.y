@@ -433,7 +433,7 @@ TypeExpTerm :: { UncheckedTypeExp }
                 unlines ["missing array row type.",
                          "Did you mean []"  ++ pretty (fst $2) ++ "?"]
            }
-		    
+
 SumType :: { UncheckedTypeExp }
 SumType  : SumClauses { TESum (fst $1) (snd $1) }
 
@@ -441,16 +441,13 @@ SumClauses :: { ([(Name, [UncheckedTypeExp])], SrcLoc) }
             : SumClauses '|' SumClause { let (cs, loc1) = $1;
                                              (c, ts, loc2) = $3
                                           in (cs++[(c, ts)], srcspan loc1 loc2) }
-            | SumClause %prec sumprec { let (n, ts, loc) = $1 
+            | SumClause %prec sumprec { let (n, ts, loc) = $1
                                         in ([(n, ts)], loc) }
-		    
+
 SumClause :: { (Name, [UncheckedTypeExp], SrcLoc) }
 	   : SumClause TypeExpTerm { let (n, ts, loc) = $1
                                      in (n, ts ++ [$2], srcspan loc $>)}
-           | VConstr { (fst $1, [], snd $1) } 
-
-VConstr :: { (Name, SrcLoc) }
-         : constructor  { let L _ (CONSTRUCTOR c) = $1 in  (c, srclocOf $1) }
+           | VConstr0 { (fst $1, [], snd $1) }
 
 TypeExpApply :: { UncheckedTypeExp }
               : TypeExpApply TypeArg
@@ -471,6 +468,16 @@ TypeExpAtom :: { UncheckedTypeExp }
              | '{' '}'                        { TERecord [] (srcspan $1 $>) }
              | '{' FieldTypes1 '}'            { TERecord $2 (srcspan $1 $>) }
              | QualName                       { TEVar (fst $1) (snd $1) }
+             | Enum                           { TEEnum (fst $1)  (snd $1)}
+
+Enum :: { ([Name], SrcLoc) }
+      : VConstr0 %prec enumprec { ([fst $1], snd $1) }
+      | VConstr0 '|' Enum
+        { let names = fst $1 : fst $3; loc = srcspan (snd $1) (snd $3)
+          in (names, loc) }
+
+VConstr0 :: { (Name, SrcLoc) }
+          : constructor { let L _ (CONSTRUCTOR c) = $1 in (c, srclocOf $1) }
 
 TypeArg :: { TypeArgExp Name }
          : '[' DimDecl ']' { TypeArgExpDim (fst $2) (srcspan $1 $>) }
@@ -591,9 +598,9 @@ Exp2 :: { UncheckedExp }
 
      | Apply { $1 }
      | CApply { $1 }
- 
+
 CApply :: { UncheckedExp }
-        : VConstr Exps { let (n, loc) = $1 in Constr n $2 NoInfo loc } 
+        : VConstr0 Exps { let (n, loc) = $1 in Constr n $2 NoInfo loc }
 
 Exps :: { [UncheckedExp] }
       : {- empty -} { [] }
@@ -608,10 +615,11 @@ Apply :: { UncheckedExp }
         { $1 }
 
 Atom :: { UncheckedExp }
-Atom : PrimLit       { Literal (fst $1) (snd $1) }
-     | intlit        { let L loc (INTLIT x) = $1 in IntLit x NoInfo loc }
-     | floatlit      { let L loc (FLOATLIT x) = $1 in FloatLit x NoInfo loc }
-     | stringlit     { let L loc (STRINGLIT s) = $1 in
+Atom : PrimLit        { Literal (fst $1) (snd $1) }
+     | VConstr0       { VConstr0 (fst $1) NoInfo (snd $1) }
+     | intlit         { let L loc (INTLIT x) = $1 in IntLit x NoInfo loc }
+     | floatlit       { let L loc (FLOATLIT x) = $1 in FloatLit x NoInfo loc }
+     | stringlit      { let L loc (STRINGLIT s) = $1 in
                         ArrayLit (map (flip Literal loc . SignedValue . Int32Value . fromIntegral . ord) s) NoInfo loc }
      | '(' Exp ')' FieldAccesses
        { foldl (\x (y, _) -> Project y x NoInfo (srclocOf x))
@@ -758,7 +766,7 @@ CInnerPattern :: { PatternBase NoInfo Name }
                | ConstrPattern                      { $1 }
 
 ConstrPattern :: { PatternBase NoInfo Name}
-              : VConstr CPattern { let (n, loc) = $1;
+              : VConstr0 CPattern { let (n, loc) = $1;
                                                loc' = srcspan loc $>
                                            in PatternConstr n NoInfo $2 loc' }
 
@@ -784,7 +792,7 @@ CaseLiteral :: { (UncheckedExp, SrcLoc) }
              | floatlit       { let L loc (FLOATLIT x) = $1 in (FloatLit x NoInfo loc, loc) }
              | stringlit      { let L loc (STRINGLIT s) = $1 in
                               (ArrayLit (map (flip Literal loc . SignedValue . Int32Value . fromIntegral . ord) s) NoInfo loc, loc) }
-             | VConstr        { (VConstr0 (fst $1) NoInfo (snd $1), snd $1) }
+             | VConstr0       { (VConstr0 (fst $1) NoInfo (snd $1), snd $1) }
 
 LoopForm :: { LoopFormBase NoInfo Name }
 LoopForm : for VarId '<' Exp
