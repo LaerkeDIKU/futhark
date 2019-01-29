@@ -174,8 +174,8 @@ applySubstInConstraint _ _ (Overloaded ts loc) = Overloaded ts loc
 applySubstInConstraint _ _ (Equality loc) = Equality loc
 applySubstInConstraint _ _ (ParamType l loc) = ParamType l loc
 applySubstInConstraint _ _ (HasConstrs ns loc) = HasConstrs ns loc
-applySubstInConstraint vn tp (HasConstrs' cs loc) =
-  HasConstrs' (M.map (applySubst (`M.lookup` M.singleton vn tp)) cs) loc
+applySubstInConstraint vn tp (HasConstrs' cs loc) = undefined
+  --HasConstrs' (M.map (applySubst (`M.lookup` M.singleton vn tp)) cs) loc
 
 linkVarToType :: MonadUnify m => SrcLoc -> VName -> TypeBase () () -> m ()
 linkVarToType loc vn tp = do
@@ -237,7 +237,7 @@ linkVarToType loc vn tp = do
 
               Just (HasConstrs' required_cs old_loc) ->
                 case tp of
-                  Sum ts
+                  SumT ts
                     | all (`M.member` ts) $ M.keys required_cs ->
                         mapM_ (uncurry (zipWithM_ (unify loc))) $ M.elems $
                           M.intersectionWith (,) required_cs ts
@@ -254,7 +254,7 @@ removeUniqueness (Record ets) =
   Record $ fmap removeUniqueness ets
 removeUniqueness (Arrow als p t1 t2) =
   Arrow als p (removeUniqueness t1) (removeUniqueness t2)
-removeUniqueness (Sum cs) =
+removeUniqueness (SumT cs) =
   SumT $ (fmap . fmap) removeUniqueness cs
 removeUniqueness t = t `setUniqueness` Nonunique
 
