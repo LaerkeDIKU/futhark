@@ -159,7 +159,6 @@ import Language.Futhark.Parser.Lexer
       doc             { L _  (DOC _) }
 
 %left bottom
-%left sumprec
 %left ifprec letprec unsafe caseprec typeprec enumprec sumprec
 %left ',' case
 %left ':'
