@@ -95,6 +95,10 @@ unifyArrayElemTypes uf (ArrayRecordElem et1) (ArrayRecordElem et2)
 unifyArrayElemTypes _ (ArrayEnumElem cs1) (ArrayEnumElem cs2)
   | cs1 == cs2 =
      Just $ ArrayEnumElem cs1
+unifyArrayElemTypes uf (ArraySumElem cs1) (ArraySumElem cs2)
+  | sort (M.keys cs1) == sort (M.keys cs2) =
+    ArraySumElem <$>
+    traverse (uncurry (zipWithM (unifyRecordArrayElemTypes uf))) (M.intersectionWith (,) cs1 cs2)
 unifyArrayElemTypes _ _ _ =
   Nothing
 
@@ -247,6 +251,21 @@ checkTypeExp t@(TEEnum names loc) = do
     throwError $ TypeError loc "Enums must have 256 or fewer constructors."
   return (TEEnum names loc, Enum names,  Unlifted)
 
+checkTypeExp t@(TESum cs loc) = do
+  let constructors = map fst cs
+  unless (sort constructors == sort (nub constructors)) $
+    throwError $ TypeError loc $ "Duplicate constructors in " ++ pretty t
+
+  -- TODO: Should this apply?
+  unless (length constructors <= 256) $
+    throwError $ TypeError loc "Sum types must have 256 or fewer constructors."
+
+  cs_ts_ls <- (traverse . traverse) checkTypeExp $ M.fromList cs
+  let cs'  = (fmap . fmap) (\(x,_,_) -> x) cs_ts_ls
+      ts_s = (fmap . fmap) (\(_, y, _) -> y) cs_ts_ls
+      ls   = (concatMap . fmap) (\(_, _, z) -> z) cs_ts_ls
+  return (TESum (M.toList cs') loc, SumT ts_s, foldl' max Unlifted ls)
+
 checkNamedDim :: MonadTypeChecker m =>
                  SrcLoc -> QualName Name -> m (QualName VName)
 checkNamedDim loc v = do
@@ -269,6 +288,7 @@ checkForDuplicateNames = (`evalStateT` mempty) . mapM_ check
         check (RecordPattern fs _) = mapM_ (check . snd) fs
         check (PatternAscription p _ _) = check p
         check PatternLit{} = return ()
+        check (PatternConstr _ _ p _) = check p
 
         seen v loc = do
           already <- gets $ M.lookup v
@@ -297,6 +317,7 @@ checkForDuplicateNamesInType = checkForDuplicateNames . pats
         pats (TEApply t1 TypeArgExpDim{} _) = pats t1
         pats TEVar{} = []
         pats TEEnum{} = []
+        pats (TESum cs _) = concatMap (concatMap pats . snd) cs
 
 -- | Ensure that every shape parameter is used in positive position at
 -- least once before being used in negative position.
@@ -392,6 +413,8 @@ substituteTypes substs ot = case ot of
   Arrow als v t1 t2 ->
     Arrow als v (substituteTypes substs t1) (substituteTypes substs t2)
   Enum cs -> Enum cs
+  SumT cs ->
+    SumT $ (fmap . fmap) (substituteTypes substs) cs
   where nope = error "substituteTypes: Cannot create array after substitution."
 
         substituteTypesInArrayElem (ArrayPrimElem t) =
@@ -407,6 +430,9 @@ substituteTypes substs ot = case ot of
           where ts' = fmap (substituteTypes substs . recordArrayElemToType) ts
         substituteTypesInArrayElem (ArrayEnumElem cs) =
           Enum cs
+        substituteTypesInArrayElem (ArraySumElem cs) =
+          SumT cs'
+          where cs' = (fmap . fmap) (substituteTypes substs . recordArrayElemToType) cs
 
         substituteInTypeArg (TypeArgDim d loc) =
           TypeArgDim (substituteInDim d) loc
@@ -488,6 +514,7 @@ substTypesAny lookupSubst ot = case ot of
   Arrow als v t1 t2 ->
     Arrow als v (substTypesAny lookupSubst t1) (substTypesAny lookupSubst t2)
   Enum names -> Enum names
+  SumT ts -> SumT $ (fmap . fmap) (substTypesAny lookupSubst) ts
 
   where nope = error "substTypesAny: Cannot create array after substitution."
 
@@ -502,6 +529,9 @@ substTypesAny lookupSubst ot = case ot of
         subsArrayElem (ArrayRecordElem ts) =
           Record $ substTypesAny lookupSubst . recordArrayElemToType <$> ts
         subsArrayElem (ArrayEnumElem cs) = Enum cs
+        subsArrayElem (ArraySumElem cs) =
+          let cs' = (fmap . fmap) recordArrayElemToType cs
+          in SumT $ (fmap . fmap) (substTypesAny lookupSubst) cs'
 
         subsTypeArg (TypeArgType t loc) =
           TypeArgType (substTypesAny lookupSubst' t) loc

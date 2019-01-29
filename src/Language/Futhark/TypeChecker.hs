@@ -867,6 +867,8 @@ newNamesForMTy orig_mty = do
           Record $ fmap substituteInType ts
         substituteInType (Enum cs) =
           Enum cs
+        substituteInType (SumT ts) =
+          SumT $ (fmap . fmap) substituteInType ts
         substituteInType (Array () u (ArrayPrimElem t) shape) =
           Array () u (ArrayPrimElem t) (substituteInShape shape)
         substituteInType (Array () u (ArrayPolyElem (TypeName qs v) targs) shape) =

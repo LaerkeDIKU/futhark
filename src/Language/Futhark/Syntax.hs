@@ -315,6 +315,7 @@ data ArrayElemTypeBase dim =
   | ArrayPolyElem TypeName [TypeArg dim]
   | ArrayRecordElem (M.Map Name (RecordArrayElemTypeBase dim))
   | ArrayEnumElem [Name]
+  | ArraySumElem (M.Map Name [RecordArrayElemTypeBase dim]) -- TODO:  Is this right?
   deriving (Eq, Show)
 
 instance Traversable ArrayElemTypeBase where
@@ -326,6 +327,8 @@ instance Traversable ArrayElemTypeBase where
     ArrayRecordElem <$> traverse (traverse f) fs
   traverse _ (ArrayEnumElem cs) =
     pure $ ArrayEnumElem cs
+  traverse f (ArraySumElem cs) =
+    ArraySumElem <$> (traverse . traverse) (traverse f) cs
 
 instance Functor ArrayElemTypeBase where
   fmap = fmapDefault
@@ -339,7 +342,7 @@ instance Foldable ArrayElemTypeBase where
 -- parameter names are ignored.
 data TypeBase dim as = Prim PrimType
                      | Enum [Name]
-                     | Sum (M.Map Name [TypeBase dim as])
+                     | SumT (M.Map Name [TypeBase dim as])
                      | Array as Uniqueness (ArrayElemTypeBase dim) (ShapeDecl dim)
                      | Record (M.Map Name (TypeBase dim as))
                      | TypeVar as Uniqueness TypeName [TypeArg dim]
@@ -367,6 +370,7 @@ instance Bitraversable TypeBase where
   bitraverse f g (Arrow als v t1 t2) =
     Arrow <$> g als <*> pure v <*> bitraverse f g t1 <*> bitraverse f g t2
   bitraverse _ _ (Enum n) = pure $ Enum n
+  bitraverse f g (SumT cs) = SumT <$> (traverse . traverse) (bitraverse f g) cs
 
 instance Bifunctor TypeBase where
   bimap = bimapDefault
