@@ -339,6 +339,7 @@ instance Foldable ArrayElemTypeBase where
 -- parameter names are ignored.
 data TypeBase dim as = Prim PrimType
                      | Enum [Name]
+                     | Sum (M.Map Name [TypeBase dim as])
                      | Array as Uniqueness (ArrayElemTypeBase dim) (ShapeDecl dim)
                      | Record (M.Map Name (TypeBase dim as))
                      | TypeVar as Uniqueness TypeName [TypeArg dim]
@@ -417,6 +418,7 @@ data TypeExp vn = TEVar (QualName vn) SrcLoc
                 | TEApply (TypeExp vn) (TypeArgExp vn) SrcLoc
                 | TEArrow (Maybe vn) (TypeExp vn) (TypeExp vn) SrcLoc
                 | TEEnum [Name] SrcLoc
+                | TESum [(Name, [TypeExp vn])] SrcLoc
                  deriving (Eq, Show)
 
 instance Located (TypeExp vn) where
@@ -427,7 +429,8 @@ instance Located (TypeExp vn) where
   locOf (TEUnique _ loc)    = locOf loc
   locOf (TEApply _ _ loc)   = locOf loc
   locOf (TEArrow _ _ _ loc) = locOf loc
-  locOf (TEEnum _ loc)    = locOf loc
+  locOf (TEEnum _ loc)      = locOf loc
+  locOf (TESum _ loc)      = locOf loc
 
 data TypeArgExp vn = TypeArgExpDim (DimDecl vn) SrcLoc
                    | TypeArgExpType (TypeExp vn)
@@ -735,6 +738,9 @@ data ExpBase f vn =
             | VConstr0 Name (f CompType) SrcLoc
             -- ^ An enum element, e.g., @#foo@.
 
+            | Constr Name [ExpBase f vn] (f CompType) SrcLoc
+            -- ^ An n-ary value constructor.
+
             | Match (ExpBase f vn) [CaseBase f vn] (f CompType) SrcLoc
             -- ^ A match expression.
 
@@ -786,7 +792,8 @@ instance Located (ExpBase f vn) where
   locOf (Unsafe _ loc)                 = locOf loc
   locOf (Assert _ _ _ loc)             = locOf loc
   locOf (VConstr0 _ _ loc)             = locOf loc
-  locOf (Match _ _ _ loc)                = locOf loc
+  locOf (Constr _ _ _ loc)             = locOf loc
+  locOf (Match _ _ _ loc)              = locOf loc
 
 -- | An entry in a record literal.
 data FieldBase f vn = RecordFieldExplicit Name (ExpBase f vn) SrcLoc
@@ -821,6 +828,7 @@ data PatternBase f vn = TuplePattern [PatternBase f vn] SrcLoc
                       | Wildcard (f PatternType) SrcLoc -- Nothing, i.e. underscore.
                       | PatternAscription (PatternBase f vn) (TypeDeclBase f vn) SrcLoc
                       | PatternLit (ExpBase f vn) (f PatternType) SrcLoc
+                      | PatternConstr Name (f PatternType) (PatternBase f vn) SrcLoc
 deriving instance Showable f vn => Show (PatternBase f vn)
 
 instance Located (PatternBase f vn) where
@@ -831,6 +839,7 @@ instance Located (PatternBase f vn) where
   locOf (Wildcard _ loc)            = locOf loc
   locOf (PatternAscription _ _ loc) = locOf loc
   locOf (PatternLit _ _ loc)        = locOf loc
+  locOf (PatternConstr _ _ _ loc)     = locOf loc
 
 -- | Documentation strings, including source location.
 data DocComment = DocComment String SrcLoc
