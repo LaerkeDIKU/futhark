@@ -1282,6 +1282,20 @@ checkExp (VConstr0 name NoInfo loc) = do
   mustHaveConstr loc name t
   return $ VConstr0 name (Info t) loc
 
+--checkExp (VConstr1 name payload NoInfo loc) = do
+--  t <- newTypeVar loc "t"
+--  payload' <- checkExp payload
+--  pt <- expType payload'
+--  mustHaveConstr loc name t [toStructural pt]
+--  return $ VConstr1 name payload' (Info t) loc
+
+checkExp (Constr name es NoInfo loc) = do
+  t <- newTypeVar loc "t"
+  es' <- mapM checkExp es
+  ets <- mapM expType es'
+  mustHaveConstr' loc name t (toStructural <$> ets)
+  return $ Constr name es' (Info t) loc
+
 checkExp (Match _ [] NoInfo loc) =
   typeError loc "Match expressions must have at least one case."
 

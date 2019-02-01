@@ -137,6 +137,8 @@ nestedDims t =
             TypeVar _ _ _ targs -> concatMap typeArgDims targs
             Arrow _ v t1 t2     -> filter (notV v) $ nestedDims t1 <> nestedDims t2
             Enum{}              -> []
+            SumT cs             -> nub $ fold $ (fmap . concatMap) nestedDims cs
+
   where arrayNestedDims ArrayPrimElem{} =
           mempty
         arrayNestedDims (ArrayPolyElem _ targs) =
@@ -493,6 +495,7 @@ typeOf (ProjectSection _ (Info t) _) =
 typeOf (IndexSection _ (Info t) _) =
   removeShapeAnnotations t
 typeOf (VConstr0 _ (Info t) _)  = t
+typeOf (Constr _ _ (Info t) _)  = t
 typeOf (Match _ _ (Info t) _) = t
 
 foldFunType :: Monoid as => [TypeBase dim as] -> TypeBase dim as -> TypeBase dim as
@@ -524,6 +527,7 @@ typeVars t =
             f = recordArrayElemToType
     Array _ _ ArrayEnumElem{} _ -> mempty
     Enum{} -> mempty
+    SumT cs -> mconcat $ (foldMap . fmap) typeVars cs
   where typeVarFree = S.singleton . typeLeaf
         typeArgFree (TypeArgType ta _) = typeVars ta
         typeArgFree TypeArgDim{} = mempty

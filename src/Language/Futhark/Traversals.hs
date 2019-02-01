@@ -178,6 +178,8 @@ instance ASTMappable (ExpBase Info VName) where
     mapOnExp tv loopbody <*> pure loc
   astMap tv (VConstr0 name t loc) =
     VConstr0 name <$> traverse (mapOnCompType tv) t <*> pure loc
+  astMap tv (Constr name es ts loc) =
+    Constr name <$> traverse (mapOnExp tv) es <*> traverse (mapOnCompType tv) ts <*> pure loc
   astMap tv (Match e cases t loc) =
     Match <$> mapOnExp tv e <*> astMap tv cases
           <*> traverse (mapOnCompType tv) t <*> pure loc

@@ -385,6 +385,7 @@ typeExpUses (TEArrow _ t1 t2 _) =
   let (pos, neg) = typeExpUses t1 <> typeExpUses t2
   in (mempty, pos <> neg)
 typeExpUses TEEnum{} = mempty
+typeExpUses (TESum cs _) = foldMap (mconcat . fmap typeExpUses . snd) cs
 
 dimDeclUses :: DimDecl VName -> ([VName], [VName])
 dimDeclUses (NamedDim v) = ([qualLeaf v], [])
