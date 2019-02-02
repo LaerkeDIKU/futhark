@@ -37,6 +37,8 @@ import qualified Language.Futhark.TypeChecker.Types as Types
 import qualified Language.Futhark.TypeChecker.Monad as TypeM
 import Futhark.Util.Pretty hiding (space, bool)
 
+import Debug.Trace
+
 --- Uniqueness
 
 data Usage = Consumed SrcLoc
@@ -829,6 +831,9 @@ checkExp (Ascript e decl loc) = do
   e' <- checkExp e
   t <- toStruct <$> expType e'
   let decl_t = removeShapeAnnotations $ unInfo $ expandedType decl'
+  constrs <- getConstraints
+  --traceM $ unlines ["e:" ++ show e, "t:" ++ show t, "decl_t: " ++ show decl_t
+  --                 , "constraints: " ++ show constrs]
   unify loc decl_t t
 
   -- We also have to make sure that uniqueness matches.  This is done
@@ -1294,6 +1299,8 @@ checkExp (Constr name es NoInfo loc) = do
   es' <- mapM checkExp es
   ets <- mapM expType es'
   mustHaveConstr' loc name t (toStructural <$> ets)
+  constrs <- getConstraints
+  --traceM $ unlines ["t: " ++ show t, "constrs: " ++ show constrs]
   return $ Constr name es' (Info t) loc
 
 checkExp (Match _ [] NoInfo loc) =

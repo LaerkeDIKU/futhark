@@ -87,6 +87,7 @@ data Value = ValuePrim !PrimValue
            | ValueRecord (M.Map Name Value)
            | ValueFun (Value -> EvalM Value)
            | ValueEnum Name
+           | ValueSum Name [Value]
 
 instance Eq Value where
   ValuePrim x == ValuePrim y = x == y
@@ -116,6 +117,7 @@ instance Pretty Value where
   ppr (ValueRecord m) = prettyRecord m
   ppr ValueFun{} = text "#<fun>"
   ppr (ValueEnum n) = text "#" <> ppr n
+  ppr (ValueSum n vs) = text "#" <> ppr n <+> sep (map ppr vs)
 
 -- | Create an array value; failing if that would result in an
 -- irregular array.
@@ -325,7 +327,8 @@ patternMatch env m (PatternLit e _ _) v = do
   if v == v'
     then pure m
     else mzero
-
+--patternMatch env m (PatternConstr n _ p _) (ValueSum n' (Just v))
+--  | n == n' = patternMatch env m p v
 patternMatch _ _ _ _ = mzero
 
 -- | For matching size annotations (the actual type will have been
@@ -529,6 +532,7 @@ evalType env t@(TypeVar () _ tn args) =
           return (mempty, M.singleton p $ T.TypeAbbr l [] t'')
         matchPtoA _ _ = return mempty
 evalType _ (Enum cs) = return $ Enum cs
+evalType env (SumT cs) = SumT <$> (traverse . traverse) (evalType env) cs
 
 eval :: Env -> Exp -> EvalM Value
 
@@ -768,6 +772,16 @@ eval env (Assert what e (Info s) loc) = do
   eval env e
 
 eval _ (VConstr0 c _ _) = return $ ValueEnum c
+
+--eval _ (VConstr0 c _ _) = return $ ValueSum c Nothing
+--
+--eval env (VConstr1 c e _ _) = do
+--  v <- eval env e
+--  return $ ValueSum c (Just v)
+
+eval env (Constr c es _ _) = do
+  vs <- mapM (eval env) es
+  return $ ValueSum c vs
 
 eval env (Match e cs _ _) = do
   v <- eval env e

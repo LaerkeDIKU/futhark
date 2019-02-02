@@ -37,6 +37,8 @@ import Language.Futhark.TypeChecker.Monad hiding (BoundV, checkQualNameWithEnv)
 import Language.Futhark.TypeChecker.Types hiding (checkTypeDecl)
 import Futhark.Util.Pretty (Pretty)
 
+import Debug.Trace
+
 -- | Mapping from fresh type variables, instantiated from the type
 -- schemes of polymorphic functions, to (possibly) specific types as
 -- determined on application and the location of that application, or
@@ -196,11 +198,13 @@ linkVarToType loc vn tp = do
                     case tp' of
                       TypeVar _ _ (TypeName [] v) []
                         | not $ isRigid v constraints -> linkVarToTypes loc v ts
-                      _ ->
+                      _ -> do
+                        traceM $ "ts:" ++ show ts ++ "\n" ++ "tp:" ++ show tp ++ "\ntp':" ++ show tp'
+                                   ++ "\nvn:" ++ show vn
                         typeError loc $ "Cannot unify `" ++ prettyName vn ++ "' with type `" ++
-                        pretty tp ++ "' (`" ++ prettyName vn ++
-                        "` must be one of " ++ intercalate ", " (map pretty ts) ++
-                        " due to use at " ++ locStr old_loc ++ ")."
+                          pretty tp ++ "' (`" ++ prettyName vn ++
+                          "` must be one of " ++ intercalate ", " (map pretty ts) ++
+                          " due to use at " ++ locStr old_loc ++ ")."
               Just (HasFields required_fields old_loc) ->
                 case tp of
                   Record tp_fields

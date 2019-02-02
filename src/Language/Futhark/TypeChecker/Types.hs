@@ -65,6 +65,11 @@ unifyTypesU uf (Arrow as1 mn1 t1 t1') (Arrow as2 _ t2 t2') =
   Arrow (as1 <> as2) mn1 <$> unifyTypesU (flip uf) t1 t2 <*> unifyTypesU uf t1' t2'
 unifyTypesU _ e1@Enum{} e2@Enum{}
   | e1 == e2 = Just e1
+unifyTypesU uf (SumT cs1) (SumT cs2)
+  | length cs1 == length cs2,
+    sort (M.keys cs1) == sort (M.keys cs2) =
+      SumT <$> traverse (uncurry (zipWithM (unifyTypesU uf)))
+      (M.intersectionWith (,) cs1 cs2)
 unifyTypesU _ _ _ = Nothing
 
 unifyTypeArgs :: (ArrayDim dim) =>

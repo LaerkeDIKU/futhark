@@ -202,6 +202,8 @@ instance ASTMappable (TypeExp VName) where
   astMap tv (TEArrow v t1 t2 loc) =
     TEArrow v <$> astMap tv t1 <*> astMap tv t2 <*> pure loc
   astMap _ te@TEEnum{} = pure te
+  astMap tv (TESum cs loc) =
+    TESum <$> traverse (traverse $ astMap tv) cs <*> pure loc
 
 instance ASTMappable (TypeArgExp VName) where
   astMap tv (TypeArgExpDim dim loc) =
