@@ -771,12 +771,12 @@ CInnerPattern :: { PatternBase NoInfo Name }
                | ConstrPattern                      { $1 }
 
 ConstrPattern :: { PatternBase NoInfo Name}
-              : VConstr0 ConstrFields { let (n, loc) = $1;
+               : VConstr0 ConstrFields { let (n, loc) = $1;
                                              loc' = srcspan loc $>
                                          in PatternConstr n NoInfo $2 loc'}
 
 ConstrFields :: { [PatternBase NoInfo Name] }
-              : {- empty -}             { [] }
+              : CPattern                { [$1] }
               | ConstrFields CPattern   { $1 ++ [$2] }
 
 CFieldPattern :: { (Name, PatternBase NoInfo Name) }
@@ -801,6 +801,7 @@ CaseLiteral :: { (UncheckedExp, SrcLoc) }
              | floatlit       { let L loc (FLOATLIT x) = $1 in (FloatLit x NoInfo loc, loc) }
              | stringlit      { let L loc (STRINGLIT s) = $1 in
                               (ArrayLit (map (flip Literal loc . SignedValue . Int32Value . fromIntegral . ord) s) NoInfo loc, loc) }
+             | VConstr0       { (VConstr0 (fst $1) NoInfo (snd $1), snd $1) }
 
 LoopForm :: { LoopFormBase NoInfo Name }
 LoopForm : for VarId '<' Exp
