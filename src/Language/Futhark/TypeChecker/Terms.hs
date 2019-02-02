@@ -564,6 +564,25 @@ checkPattern' (PatternLit e NoInfo loc) NoneInferred = do
   t' <- expType e'
   return $ PatternLit e' (Info (vacuousShapeAnnotations t')) loc
 
+checkPattern' (PatternConstr n NoInfo ps loc) (Ascribed (SumT cs))
+  | Just ts <- M.lookup n cs = do
+      ps' <- mapM (uncurry checkPattern') $ zip ps $ map Ascribed ts
+      return $ PatternConstr n (Info (SumT cs)) ps' loc
+
+checkPattern' p@(PatternConstr n NoInfo ps loc) (Ascribed t) = do
+  --ps_ts <- replicateM (length ps) (newTypeVar loc "t")
+  pts <- (fmap . fmap) patternType $ mapM ((flip checkPattern') NoneInferred) ps
+  mustHaveConstr' loc n t (toStructural <$> pts)
+  t' <- normaliseType t
+  checkPattern' p $ Ascribed t'
+  --PatternConstr n (Info t) <$> checkPattern' p (Ascribed t') <*> pure loc
+
+--checkPattern' (PatternConstr n NoInfo p loc) NoneInferred = do
+--  t <- newTypeVar loc "t"
+--  pt <- patternType <$> checkPattern' p NoneInferred
+--  mustHaveConstr loc n t [toStructural pt]
+--  PatternConstr n (Info t) <$> checkPattern' p (Ascribed (vacuousShapeAnnotations pt)) <*> pure loc
+
 bindPatternNames :: PatternBase NoInfo Name -> TermTypeM a -> TermTypeM a
 bindPatternNames = bindSpaced . map asTerm . S.toList . patIdentSet
   where asTerm v = (Term, identName v)
@@ -702,6 +721,7 @@ patternUses (TuplePattern ps _) = foldMap patternUses ps
 patternUses (RecordPattern fs _) = foldMap (patternUses . snd) fs
 patternUses (PatternAscription p (TypeDecl declte _) _) =
   patternUses p <> typeExpUses declte
+patternUses (PatternConstr n _ ps _) = foldMap patternUses ps
 
 noTypeParamsPermitted :: [UncheckedTypeParam] -> TermTypeM ()
 noTypeParamsPermitted ps =

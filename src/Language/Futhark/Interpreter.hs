@@ -327,8 +327,9 @@ patternMatch env m (PatternLit e _ _) v = do
   if v == v'
     then pure m
     else mzero
---patternMatch env m (PatternConstr n _ p _) (ValueSum n' (Just v))
---  | n == n' = patternMatch env m p v
+patternMatch env m (PatternConstr n _ ps _) (ValueSum n' vs)
+  | n == n' =
+    foldM (\m' (p,v) -> patternMatch env m' p v) m $ zip ps vs
 patternMatch _ _ _ _ = mzero
 
 -- | For matching size annotations (the actual type will have been

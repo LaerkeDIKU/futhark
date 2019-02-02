@@ -623,6 +623,7 @@ patIdentSet (RecordPattern fs _)      = mconcat $ map (patIdentSet . snd) fs
 patIdentSet Wildcard{}                = mempty
 patIdentSet (PatternAscription p _ _) = patIdentSet p
 patIdentSet PatternLit{}              = mempty
+patIdentSet (PatternConstr n _ ps _ ) = mconcat $ map patIdentSet ps
 
 -- | The type of values bound by the pattern.
 patternType :: PatternBase Info VName -> CompType
