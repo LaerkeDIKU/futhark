@@ -424,7 +424,6 @@ TypeExpTerm :: { UncheckedTypeExp }
            { TEArray $4 (fst $2) (srcspan $1 $>) }
          | '['  ']' TypeExpTerm %prec indexprec
            { TEArray $3 AnyDim (srcspan $1 $>) }
-         | SumType { $1 }
          | TypeExpApply { $1 }
 
          -- Errors
@@ -471,6 +470,7 @@ TypeExpAtom :: { UncheckedTypeExp }
              | '{' '}'                        { TERecord [] (srcspan $1 $>) }
              | '{' FieldTypes1 '}'            { TERecord $2 (srcspan $1 $>) }
              | QualName                       { TEVar (fst $1) (snd $1) }
+             | SumType                        { $1 }
 
 VConstr0 :: { (Name, SrcLoc) }
           : constructor { let L _ (CONSTRUCTOR c) = $1 in (c, srclocOf $1) }
@@ -593,7 +593,6 @@ Exp2 :: { UncheckedExp }
        { Lambda $2 (fst $3 : snd $3) $6 (fmap (flip TypeDecl NoInfo) $4) NoInfo (srcspan $1 $>) }
 
      | Apply { $1 }
-     | CApply { $1 }
 
 CApply :: { UncheckedExp }
         : '(' VConstr0 Exps ')'   { let (n, loc) = $2
@@ -613,6 +612,7 @@ Apply :: { UncheckedExp }
 
 Atom :: { UncheckedExp }
 Atom : PrimLit        { Literal (fst $1) (snd $1) }
+     | CApply { $1 }
      | VConstr0       { VConstr0 (fst $1) NoInfo (snd $1) }
      | intlit         { let L loc (INTLIT x) = $1 in IntLit x NoInfo loc }
      | floatlit       { let L loc (FLOATLIT x) = $1 in FloatLit x NoInfo loc }
