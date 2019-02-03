@@ -592,7 +592,7 @@ Exp2 :: { UncheckedExp }
      | '\\' TypeParams FunParams1 maybeAscription(TypeExpTerm) '->' Exp
        { Lambda $2 (fst $3 : snd $3) $6 (fmap (flip TypeDecl NoInfo) $4) NoInfo (srcspan $1 $>) }
 
-     | Apply { $1 }
+     | Apply_ { $1 }
 
 CApply :: { UncheckedExp }
         : '(' VConstr0 Exps ')'   { let (n, loc) = $2
@@ -601,6 +601,19 @@ CApply :: { UncheckedExp }
 Exps :: { [UncheckedExp] }
       : Exp { [$1] }
       | Exps Exp { $1 ++ [$2] }
+
+Apply_ :: { UncheckedExp }
+       : ApplyList { case $1 of
+                       ((VConstr0 n _ loc1):_:_) -> Constr n (tail $1) NoInfo (srcspan loc1 (last $1))
+                       _                -> foldl1 (\f x -> Apply f x NoInfo NoInfo (srcspan f x)) $1 }
+
+ApplyList :: { [UncheckedExp] }
+          : ApplyList Atom %prec juxtprec
+            { $1 ++ [$2] }
+          | UnOp Atom %prec juxtprec
+            { [Var (fst $1) NoInfo (snd $1), $2] }
+          | Atom %prec juxtprec
+            { [$1] }
 
 Apply :: { UncheckedExp }
       : Apply Atom %prec juxtprec
