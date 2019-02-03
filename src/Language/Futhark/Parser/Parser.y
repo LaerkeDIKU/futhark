@@ -448,7 +448,7 @@ SumClauses :: { ([(Name, [UncheckedTypeExp])], SrcLoc) }
                                         in ([(n, ts)], loc) }
 
 SumClause :: { (Name, [UncheckedTypeExp], SrcLoc) }
-	          : SumClause TypeExpTerm { let (n, ts, loc) = $1
+	          : SumClause TypeExpAtom { let (n, ts, loc) = $1
                                      in (n, ts ++ [$2], srcspan loc $>)}
             | VConstr0 { (fst $1, [], snd $1) }
 
@@ -471,12 +471,6 @@ TypeExpAtom :: { UncheckedTypeExp }
              | '{' '}'                        { TERecord [] (srcspan $1 $>) }
              | '{' FieldTypes1 '}'            { TERecord $2 (srcspan $1 $>) }
              | QualName                       { TEVar (fst $1) (snd $1) }
---           | Enum                           { TEEnum (fst $1)  (snd $1)}
---Enum :: { ([Name], SrcLoc) }
---      : VConstr0 %prec enumprec { ([fst $1], snd $1) }
---      | VConstr0 '|' Enum
---        { let names = fst $1 : fst $3; loc = srcspan (snd $1) (snd $3)
---          in (names, loc) }
 
 VConstr0 :: { (Name, SrcLoc) }
           : constructor { let L _ (CONSTRUCTOR c) = $1 in (c, srclocOf $1) }
@@ -602,13 +596,11 @@ Exp2 :: { UncheckedExp }
      | CApply { $1 }
 
 CApply :: { UncheckedExp }
-        : VConstr0 Exps { let (n, loc) = $1
-                          in if null $2
-                             then  VConstr0 n NoInfo loc
-                             else Constr n $2 NoInfo loc }
+        : '(' VConstr0 Exps ')'   { let (n, loc) = $2
+                                    in Constr n $3 NoInfo loc }
 
 Exps :: { [UncheckedExp] }
-      : {- empty -} { [] }
+      : Exp { [$1] }
       | Exps Exp { $1 ++ [$2] }
 
 Apply :: { UncheckedExp }
@@ -621,7 +613,7 @@ Apply :: { UncheckedExp }
 
 Atom :: { UncheckedExp }
 Atom : PrimLit        { Literal (fst $1) (snd $1) }
---     | VConstr0       { VConstr0 (fst $1) NoInfo (snd $1) }
+     | VConstr0       { VConstr0 (fst $1) NoInfo (snd $1) }
      | intlit         { let L loc (INTLIT x) = $1 in IntLit x NoInfo loc }
      | floatlit       { let L loc (FLOATLIT x) = $1 in FloatLit x NoInfo loc }
      | stringlit      { let L loc (STRINGLIT s) = $1 in
