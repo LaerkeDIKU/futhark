@@ -854,10 +854,12 @@ checkExp (Ascript e decl loc) = do
   constrs <- getConstraints
   --traceM $ unlines ["e:" ++ show e, "t:" ++ show t, "decl_t: " ++ show decl_t
   --                 , "constraints: " ++ show constrs]
+  traceM "blah"
   unify loc decl_t t
 
   -- We also have to make sure that uniqueness matches.  This is done
   -- explicitly, because uniqueness is ignored by unification.
+  traceM "foo"
   t' <- normaliseType t
   decl_t' <- normaliseType decl_t
   unless (t' `subtypeOf` decl_t') $
@@ -1379,6 +1381,7 @@ instance Pretty (Unmatched (PatternBase Info VName)) where
         where ppField (name, t)      = text (nameToString name) <> equals <> ppr' t
       ppr' Wildcard{}                = text "_"
       ppr' (PatternLit e _ _)        = ppr e
+      ppr' (PatternConstr n _ ps _)   = text "#" <> ppr n <+> sep (map ppr' ps)
 
 unpackPat :: Pattern -> [Maybe Pattern]
 unpackPat Wildcard{} = [Nothing]
@@ -1388,6 +1391,7 @@ unpackPat (TuplePattern ps _) = Just <$> ps
 unpackPat (RecordPattern fs _) = Just . snd <$> sortFields (M.fromList fs)
 unpackPat (PatternAscription p _ _) = unpackPat p
 unpackPat p@PatternLit{} = [Just p]
+unpackPat (PatternConstr _ _ ps _) = Just <$> ps
 
 wildPattern :: Pattern -> Int -> Unmatched Pattern -> Unmatched Pattern
 wildPattern (TuplePattern ps loc) pos um = f <$> um

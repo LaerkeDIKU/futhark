@@ -111,6 +111,7 @@ unify loc orig_t1 orig_t2 = do
             typeError loc $ "Couldn't match expected type `" ++
             pretty t1' ++ "' with actual type `" ++ pretty t2' ++ "'."
 
+      traceM $ unlines ["t1:" ++ show t1, "t2:" ++ show t2, "constraints:" ++ show constraints]
       case (t1', t2') of
         _ | t1' == t2' -> return ()
 
@@ -160,7 +161,6 @@ unify loc orig_t1 orig_t2 = do
               else
                 failure
         (_, _) -> do
-          traceM $ unlines ["t1:" ++ show t1, "t2:" ++ show t2]
           failure
 
       where unifyTypeArg TypeArgDim{} TypeArgDim{} = return ()

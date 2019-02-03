@@ -249,6 +249,7 @@ traverseType f g h (TypeVar als u t args) =
 traverseType f g h (Arrow als v t1 t2) =
   Arrow <$> h als <*> pure v <*> traverseType f g h t1 <*> traverseType f g h t2
 traverseType _ _ _ (Enum cs) = pure $ Enum cs
+traverseType f g h (SumT cs) = SumT <$> (traverse . traverse) (traverseType f g h) cs
 
 traverseArrayElemType :: Applicative f =>
                          (TypeName -> f TypeName) -> (dim1 -> f dim2)
@@ -261,7 +262,9 @@ traverseArrayElemType f g (ArrayRecordElem fs) =
   ArrayRecordElem <$> traverse (traverseRecordArrayElemType f g) fs
 traverseArrayElemType _ _ (ArrayEnumElem cs) =
   pure $ ArrayEnumElem cs
-
+traverseArrayElemType f g (ArraySumElem cs) =
+  ArraySumElem <$> (traverse . traverse) (traverseRecordArrayElemType f g) cs
+  
 traverseRecordArrayElemType :: Applicative f =>
                                (TypeName -> f TypeName) -> (dim1 -> f dim2)
                             -> RecordArrayElemTypeBase dim1 -> f (RecordArrayElemTypeBase dim2)

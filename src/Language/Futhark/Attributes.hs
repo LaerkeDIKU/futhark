@@ -202,7 +202,8 @@ diet TypeVar{}               = Observe
 diet (Arrow _ _ t1 t2)       = FuncDiet (diet t1) (diet t2)
 diet (Array _ Unique _ _)    = Consume
 diet (Array _ Nonunique _ _) = Observe
-diet (Enum _)                = Observe
+diet Enum{}                  = Observe
+diet SumT{}                  = Observe
 
 -- | @t `maskAliases` d@ removes aliases (sets them to 'mempty') from
 -- the parts of @t@ that are denoted as 'Consumed' by the 'Diet' @d@.
@@ -298,6 +299,9 @@ arrayOfWithAliases (Record ts) as shape u = do
 arrayOfWithAliases Arrow{} _ _ _ = Nothing
 arrayOfWithAliases (Enum cs) as shape u  =
   Just $ Array as u (ArrayEnumElem cs) shape
+arrayOfWithAliases (SumT cs) as shape u = do
+  cs' <- (traverse . traverse) typeToRecordArrayElem cs -- TODO: update name
+  return $ Array as u (ArraySumElem cs') shape
 
 typeToRecordArrayElem :: Monoid as =>
                          TypeBase dim as -> Maybe (RecordArrayElemTypeBase dim)
@@ -526,6 +530,10 @@ typeVars t =
       where f :: RecordArrayElemTypeBase dim -> TypeBase dim ()
             f = recordArrayElemToType
     Array _ _ ArrayEnumElem{} _ -> mempty
+    Array _ _ (ArraySumElem cs) _  ->
+      foldMap (foldMap (typeVars . f)) cs
+      where f :: RecordArrayElemTypeBase dim -> TypeBase dim ()
+            f = recordArrayElemToType
     Enum{} -> mempty
     SumT cs -> mconcat $ (foldMap . fmap) typeVars cs
   where typeVarFree = S.singleton . typeLeaf
@@ -583,6 +591,7 @@ orderZero (Record fs)     = all orderZero $ M.elems fs
 orderZero TypeVar{}       = True
 orderZero Arrow{}         = False
 orderZero Enum{}          = True
+orderZero SumT{}          = True
 
 -- | Extract all the shape names that occur in a given pattern.
 patternDimNames :: PatternBase Info VName -> S.Set VName

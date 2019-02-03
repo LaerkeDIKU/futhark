@@ -125,6 +125,9 @@ instance Pretty (ShapeDecl dim) => Pretty (ArrayElemTypeBase dim) where
     where ppField (name, t) = text (nameToString name) <> colon <+> ppr t
   ppr (ArrayEnumElem cs) =
     cat $ punctuate (text " | ") $ map ((text "#" <>) . ppr) cs
+  ppr (ArraySumElem cs) =
+    cat $ punctuate (text " | ") $ map ppConstr $ M.toList cs
+    where ppConstr (name, fs) = text "#" <> ppr name <+> sep (map ppr fs)
 
 instance Pretty (ShapeDecl dim) => Pretty (TypeBase dim as) where
   ppr = pprPrec 0
@@ -326,6 +329,7 @@ instance (Eq vn, IsName vn, Annot f) => Pretty (ExpBase f vn) where
     equals <+> ppr initexp <+> ppr form <+> text "do" </>
     indent 2 (ppr loopbody)
   pprPrec _ (VConstr0 n _ _) = text "#" <> ppr n
+  pprPrec _ (Constr n cs _ _) = text "#" <> ppr n <+> sep (map ppr cs)
   pprPrec _ (Match e cs _ _) = text "match" <+> ppr e </> ppr cs
 
 instance (Eq vn, IsName vn, Annot f) => Pretty (FieldBase f vn) where
