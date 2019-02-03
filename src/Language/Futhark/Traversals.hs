@@ -317,7 +317,7 @@ instance ASTMappable (PatternBase Info VName) where
     PatternLit <$> astMap tv e <*> (Info <$> mapOnPatternType tv t) <*>  pure loc
   astMap tv (PatternConstr n (Info t) ps loc) =
     PatternConstr n <$> (Info <$> mapOnPatternType tv t) <*> mapM (astMap tv) ps <*> pure loc
-    
+
 instance ASTMappable (FieldBase Info VName) where
   astMap tv (RecordFieldExplicit name e loc) =
     RecordFieldExplicit name <$> mapOnExp tv e <*> pure loc

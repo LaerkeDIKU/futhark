@@ -159,7 +159,9 @@ unify loc orig_t1 orig_t2 = do
                 zipWithM_ subunify f1 f2 -- TODO: improve
               else
                 failure
-        (_, _) -> failure
+        (_, _) -> do
+          traceM $ unlines ["t1:" ++ show t1, "t2:" ++ show t2]
+          failure
 
       where unifyTypeArg TypeArgDim{} TypeArgDim{} = return ()
             unifyTypeArg (TypeArgType t _) (TypeArgType arg_t _) =
