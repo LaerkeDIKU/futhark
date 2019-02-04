@@ -94,6 +94,7 @@ instance Eq Value where
   ValueArray x == ValueArray y = x == y
   ValueRecord x == ValueRecord y = x == y
   ValueEnum x == ValueEnum y = x == y
+  (ValueSum n1 vs1) == (ValueSum n2 vs2) = n1 == n2 && vs1 == vs2
   _ == _ = False
 
 prettyRecord :: Pretty a => M.Map Name a -> Doc
