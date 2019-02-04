@@ -625,7 +625,6 @@ Apply :: { UncheckedExp }
 
 Atom :: { UncheckedExp }
 Atom : PrimLit        { Literal (fst $1) (snd $1) }
-     | CApply { $1 }
      | VConstr0       { VConstr0 (fst $1) NoInfo (snd $1) }
      | intlit         { let L loc (INTLIT x) = $1 in IntLit x NoInfo loc }
      | floatlit       { let L loc (FLOATLIT x) = $1 in FloatLit x NoInfo loc }
