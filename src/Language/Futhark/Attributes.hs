@@ -146,6 +146,8 @@ nestedDims t =
         arrayNestedDims (ArrayRecordElem ts) =
           fold (fmap recordArrayElemNestedDims ts)
         arrayNestedDims ArrayEnumElem{} = mempty
+        arrayNestedDims (ArraySumElem cs) =
+          fold (fmap (concatMap recordArrayElemNestedDims) cs)
 
         recordArrayElemNestedDims (RecordArrayArrayElem a ds) =
           arrayNestedDims a <> shapeDims ds
@@ -256,6 +258,14 @@ peelArray n (Array als u (ArrayRecordElem ts) shape)
 peelArray n (Array _ _ (ArrayEnumElem cs) shape)
   | shapeRank shape == n =
     Just $ Enum cs
+peelArray n (Array als u (ArraySumElem cs) shape) -- TODO : fix
+  | shapeRank shape == n =
+    Just $ SumT $ (fmap . fmap) asType cs
+  where asType (RecordArrayElem (ArrayPrimElem bt)) = Prim bt
+        asType (RecordArrayElem (ArrayPolyElem bt targs)) = TypeVar als u bt targs
+        asType (RecordArrayElem (ArrayRecordElem ts')) = Record $ fmap asType ts'
+        asType (RecordArrayElem (ArrayEnumElem cs)) = Enum cs
+        asType (RecordArrayArrayElem et e_shape) = Array als u et e_shape
 peelArray n (Array als u et shape) = do
   shape' <- stripDims n shape
   return $ Array als u et shape'
@@ -331,6 +341,8 @@ arrayElemToType (ArrayRecordElem ts) =
   Record $ fmap recordArrayElemToType ts
 arrayElemToType (ArrayPrimElem bt) = Prim bt
 arrayElemToType (ArrayEnumElem cs) = Enum cs
+arrayElemToType (ArraySumElem cs) =
+  SumT $ (fmap . fmap) recordArrayElemToType cs
 
 -- | @stripArray n t@ removes the @n@ outermost layers of the array.
 -- Essentially, it is the type of indexing an array of type @t@ with

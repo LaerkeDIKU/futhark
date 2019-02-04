@@ -112,6 +112,7 @@ unify loc orig_t1 orig_t2 = do
             pretty t1' ++ "' with actual type `" ++ pretty t2' ++ "'."
 
       traceM $ unlines ["t1:" ++ show t1, "t2:" ++ show t2, "constraints:" ++ show constraints]
+      traceM $ unlines ["t1':" ++ show t1', "t2':" ++ show t2', "constraints:" ++ show constraints]
       case (t1', t2') of
         _ | t1' == t2' -> return ()
 
@@ -148,7 +149,8 @@ unify loc orig_t1 orig_t2 = do
 
         (Array{}, Array{})
           | Just t1'' <- peelArray 1 t1',
-            Just t2'' <- peelArray 1 t2' ->
+            Just t2'' <- peelArray 1 t2' -> do
+              traceM $ unlines ["t1'': " ++ show t1'', "t2''" ++ show t2'']
               subunify t1'' t2''
 
         (SumT cs,
@@ -160,7 +162,8 @@ unify loc orig_t1 orig_t2 = do
                 zipWithM_ subunify f1 f2 -- TODO: improve
               else
                 failure
-        (_, _) -> do
+        foo@(_, _) -> do
+          traceM $ unlines ["foo" ++ show foo]
           failure
 
       where unifyTypeArg TypeArgDim{} TypeArgDim{} = return ()

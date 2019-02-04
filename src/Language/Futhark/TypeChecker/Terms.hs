@@ -854,12 +854,10 @@ checkExp (Ascript e decl loc) = do
   constrs <- getConstraints
   --traceM $ unlines ["e:" ++ show e, "t:" ++ show t, "decl_t: " ++ show decl_t
   --                 , "constraints: " ++ show constrs]
-  traceM "blah"
   unify loc decl_t t
 
   -- We also have to make sure that uniqueness matches.  This is done
   -- explicitly, because uniqueness is ignored by unification.
-  traceM "foo"
   t' <- normaliseType t
   decl_t' <- normaliseType decl_t
   unless (t' `subtypeOf` decl_t') $
