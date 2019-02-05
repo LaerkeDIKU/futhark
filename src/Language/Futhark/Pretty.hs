@@ -169,6 +169,9 @@ instance (Eq vn, IsName vn) => Pretty (TypeExp vn) where
   ppr (TEArrow Nothing t1 t2 _) = ppr t1 <+> text "->" <+> ppr t2
   ppr (TEEnum cs _) =
     cat $ punctuate (text " | ") $ map ((text "#" <>) . ppr) cs
+  ppr (TESum cs _) =
+    cat $ punctuate (text " | ") $ map ppConstr cs
+    where ppConstr (name, fs) = text "#" <> ppr name <+> sep (map ppr fs)
 
 instance (Eq vn, IsName vn) => Pretty (TypeArgExp vn) where
   ppr (TypeArgExpDim d _) = ppr $ ShapeDecl [d]
@@ -360,6 +363,7 @@ instance (Eq vn, IsName vn, Annot f) => Pretty (PatternBase f vn) where
                                     Just t' -> parens $ text "_" <> colon <+> ppr t'
                                     Nothing -> text "_"
   ppr (PatternLit e _ _)        = ppr e
+  ppr (PatternConstr n _ ps _)  = text "#" <> ppr n <+> sep (map ppr ps)
 
 ppAscription :: (Eq vn, IsName vn, Annot f) => Maybe (TypeDeclBase f vn) -> Doc
 ppAscription Nothing  = mempty

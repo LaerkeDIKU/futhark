@@ -29,6 +29,7 @@ module Futhark.Internalise.Monomorphise
 
 import           Control.Monad.RWS
 import           Control.Monad.State
+import           Data.List as L
 import           Data.Loc
 import qualified Data.Map.Strict as M
 import qualified Data.Semigroup as Sem
@@ -36,6 +37,7 @@ import qualified Data.Sequence as Seq
 import           Data.Foldable
 
 import           Futhark.MonadFreshNames
+import           Futhark.Representation.Primitive (intValue, floatValue)
 import           Language.Futhark
 import           Language.Futhark.Traversals
 import           Language.Futhark.TypeChecker.Monad (TypeBinding(..))
@@ -375,8 +377,42 @@ transformExp (Assert e1 e2 desc loc) =
   Assert <$> transformExp e1 <*> transformExp e2 <*> pure desc <*> pure loc
 
 transformExp e@VConstr0{} = return e
+
+transformExp (Constr name es t@(Info t'@(SumT cs)) loc) = do
+--  Constr name <$> mapM transformExp es <*> pure t <*> pure loc
+  es' <- mapM transformExp es
+  let cs' = zip [0..] $ sortFields cs -- TODO: Maybe do the sorting when constructing the type?
+  case L.find (\(_, (name', _)) -> name == name') cs' of
+    Nothing -> error "should never happen"
+    Just (n, _) -> constrStructure name n loc es t'
+
 transformExp (Match e cs t loc) =
   Match <$> transformExp e <*> mapM transformCase cs <*> pure t <*> pure loc
+
+constrStructure :: Name -> Int -> SrcLoc -> [Exp] -> CompType -> MonoM Exp
+constrStructure name n loc es (SumT cs) = TupLit <$> (mapM f (sortFields cs)) <*> pure loc
+         where f (name', ts)
+                 | name == name' = TupLit <$> mapM transformExp es <*> pure loc
+                 | otherwise = return $ TupLit (map defaultValue ts) noLoc
+
+defaultValue :: CompType -> Exp
+defaultValue (Prim Bool) = Literal (BoolValue False) noLoc
+defaultValue (Prim (Unsigned Int8))  = Literal (UnsignedValue (intValue Int8 0)) noLoc
+defaultValue (Prim (Unsigned Int16)) = Literal (UnsignedValue (intValue Int16 0)) noLoc
+defaultValue (Prim (Unsigned Int32)) = Literal (UnsignedValue (intValue Int32 0)) noLoc
+defaultValue (Prim (Unsigned Int64)) = Literal (UnsignedValue (intValue Int64 0)) noLoc
+defaultValue (Prim (Signed Int8))  = Literal (SignedValue (intValue Int8 0)) noLoc
+defaultValue (Prim (Signed Int16)) = Literal (SignedValue (intValue Int16 0)) noLoc
+defaultValue (Prim (Signed Int32)) = Literal (SignedValue (intValue Int32 0)) noLoc
+defaultValue (Prim (Signed Int64)) = Literal (SignedValue (intValue Int64 0)) noLoc
+defaultValue (Prim (FloatType Float32)) = Literal (FloatValue (floatValue Float32 0)) noLoc
+defaultValue (Prim (FloatType Float64)) = Literal (FloatValue (floatValue Float64 0)) noLoc
+defaultValue t@(Enum (c:_)) = VConstr0 c (Info t) noLoc
+defaultValue t@(SumT cs) = undefined
+defaultValue t@Array{} = ArrayLit [] (Info t) noLoc -- TODO: Does the shape need to be preserved?
+defaultValue t@(Record fs) = undefined --RecordLit (defaultValue <$> fs) noLoc
+defaultValue TypeVar{} = error "Shouldn't happen, I think"
+defaultValue Arrow{}   = undefined
 
 transformCase :: Case -> MonoM Case
 transformCase (CasePat p e loc) = do
@@ -464,6 +500,9 @@ expandRecordPattern (PatternAscription pat td loc) = do
   (pat', rr) <- expandRecordPattern pat
   return (PatternAscription pat' td loc, rr)
 expandRecordPattern (PatternLit e t loc) = return (PatternLit e t loc, mempty)
+expandRecordPattern (PatternConstr n t ps loc) = do
+  (ps', rrs) <- unzip <$> mapM expandRecordPattern ps
+  return (PatternConstr n t ps' loc, mconcat rrs)
 
 -- | Monomorphize a polymorphic function at the types given in the instance
 -- list. Monomorphizes the body of the function as well. Returns the fresh name
@@ -539,6 +578,7 @@ substPattern f pat = case pat of
   Wildcard (Info tp) loc      -> Wildcard (Info $ f tp) loc
   PatternAscription p td loc  -> PatternAscription (substPattern f p) td loc
   PatternLit e (Info tp) loc  -> PatternLit e (Info $ f tp) loc
+  PatternConstr n (Info tp) ps loc -> PatternConstr n (Info $ f tp) ps loc
 
 toPolyBinding :: ValBind -> PolyBinding
 toPolyBinding (ValBind _ name retdecl (Info rettype) tparams params body _ loc) =

@@ -730,6 +730,7 @@ matchPatternSV (Id vn (Info t) _) sv =
 matchPatternSV (Wildcard _ _) _ = mempty
 matchPatternSV (PatternAscription pat _ _) sv = matchPatternSV pat sv
 matchPatternSV PatternLit{} _ = mempty
+matchPatternSV (PatternConstr _ _ ps _) sv = mconcat $ map (flip matchPatternSV sv) ps
 matchPatternSV pat (Dynamic t) = matchPatternSV pat $ svFromType t
 matchPatternSV pat sv = error $ "Tried to match pattern " ++ pretty pat
                              ++ " with static value " ++ show sv ++ "."
@@ -762,6 +763,7 @@ updatePattern (PatternAscription pat tydecl loc) sv
       PatternAscription (updatePattern pat sv) tydecl loc
   | otherwise = updatePattern pat sv
 updatePattern p@PatternLit{} _ = p
+updatePattern (PatternConstr n t ps loc) sv = PatternConstr n t (map (flip updatePattern sv) ps) loc --TODO: think about this
 updatePattern pat (Dynamic t) = updatePattern pat (svFromType t)
 updatePattern pat sv =
   error $ "Tried to update pattern " ++ pretty pat

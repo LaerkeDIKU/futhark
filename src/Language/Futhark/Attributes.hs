@@ -73,6 +73,7 @@ module Language.Futhark.Attributes
   , areTupleFields
   , tupleFieldNames
   , sortFields
+  , sortConstrs
   , isTypeParam
 
   -- | Values of these types are produces by the parser.  They use
@@ -331,7 +332,7 @@ typeToRecordArrayElem (Enum cs) =
 recordArrayElemToType :: Monoid as =>
                          RecordArrayElemTypeBase dim
                       -> TypeBase dim as
-recordArrayElemToType (RecordArrayElem et)              = arrayElemToType et
+recordArrayElemToType (RecordArrayElem et)            = arrayElemToType et
 recordArrayElemToType (RecordArrayArrayElem et shape) = Array mempty Nonunique et shape
 
 arrayElemToType :: Monoid as => ArrayElemTypeBase dim -> TypeBase dim as
@@ -383,6 +384,8 @@ sortFields l = map snd $ sortOn fst $ zip (map (fieldish . fst) l') l'
         fieldish s = case reads $ nameToString s of
           [(x, "")] -> Left (x::Int)
           _         -> Right s
+sortConstrs :: M.Map Name a -> [(Name, a)]
+sortConstrs cs = sortOn fst $ M.toList cs
 
 isTypeParam :: TypeParamBase vn -> Bool
 isTypeParam TypeParamType{}       = True
