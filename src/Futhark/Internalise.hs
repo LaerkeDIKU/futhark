@@ -922,6 +922,7 @@ generateCond p e = foldr andExp (E.Literal (E.BoolValue True) noLoc) conds
         generateCond' (E.PatternAscription p' _ _) = generateCond' p'
         generateCond' (E.PatternLit ePat (Info t) _) =
           [(Just (eqExp ePat), removeShapeAnnotations t)]
+        -- generateCond' (E.PatternConstr n (Info t))
 
 
 generateCaseIf :: String -> E.Exp -> Case -> I.Body -> InternaliseM I.Exp

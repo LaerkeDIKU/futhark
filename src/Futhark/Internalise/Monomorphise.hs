@@ -390,8 +390,12 @@ transformExp (Match e cs t loc) =
   Match <$> transformExp e <*> mapM transformCase cs <*> pure t <*> pure loc
 
 constrStructure :: Name -> Int -> SrcLoc -> [Exp] -> CompType -> MonoM Exp
-constrStructure name n loc es (SumT cs) = TupLit <$> (mapM f (sortFields cs)) <*> pure loc
-         where f (name', ts)
+constrStructure name n loc es (SumT cs) =
+  TupLit <$> expsM' <*> pure loc
+         where expsM' = (index:) <$> expsM
+               index = Literal (UnsignedValue (intValue Int8 n)) noLoc
+               expsM = mapM f (sortFields cs)
+               f (name', ts)
                  | name == name' = TupLit <$> mapM transformExp es <*> pure loc
                  | otherwise = return $ TupLit (map defaultValue ts) noLoc
 
@@ -500,9 +504,26 @@ expandRecordPattern (PatternAscription pat td loc) = do
   (pat', rr) <- expandRecordPattern pat
   return (PatternAscription pat' td loc, rr)
 expandRecordPattern (PatternLit e t loc) = return (PatternLit e t loc, mempty)
-expandRecordPattern (PatternConstr n t ps loc) = do
-  (ps', rrs) <- unzip <$> mapM expandRecordPattern ps
-  return (PatternConstr n t ps' loc, mconcat rrs)
+expandRecordPattern (PatternConstr name t@(Info t'@(SumT cs)) ps loc) = do
+   let cs' = zip [0..] $ sortFields cs -- TODO: Maybe do the sorting when constructing the type?
+   case L.find (\(_, (name', _)) -> name == name') cs' of
+    Nothing -> error "should never happen"
+    Just (n, _) -> do
+      p' <- constrStructurePat name n loc ps t'
+      (_, rrs) <- unzip <$> mapM expandRecordPattern ps
+      return $ (p', mconcat rrs)
+   --return (PatternConstr n t ps' loc, mconcat rrs)
+
+constrStructurePat :: Name -> Int -> SrcLoc -> [Pattern] -> PatternType -> MonoM Pattern
+constrStructurePat name n loc ps (SumT cs) =
+  TuplePattern <$> patsM' <*> pure loc
+         where patsM' = (indexPat:) <$> patsM
+               indexPat = PatternLit index (Info (Prim (Unsigned Int8))) noLoc
+               index = Literal (UnsignedValue (intValue Int8 n)) noLoc
+               patsM = mapM f (sortConstrs cs)
+               f (name', ts)
+                 | name == name' = TuplePattern <$> (fmap . fmap) fst (mapM (expandRecordPattern) ps) <*> pure loc
+                 | otherwise = return $ TuplePattern (map (flip Wildcard noLoc) (map Info ts)) noLoc
 
 -- | Monomorphize a polymorphic function at the types given in the instance
 -- list. Monomorphizes the body of the function as well. Returns the fresh name
