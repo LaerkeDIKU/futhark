@@ -1320,7 +1320,6 @@ checkExp (Constr name es NoInfo loc) = do
   ets <- mapM expType es'
   mustHaveConstr' loc name t (toStructural <$> ets)
   constrs <- getConstraints
-  --traceM $ unlines ["t: " ++ show t, "constrs: " ++ show constrs]
   return $ Constr name es' (Info t) loc
 
 checkExp (Match _ [] NoInfo loc) =
@@ -1774,6 +1773,7 @@ boundArrayAliases Enum{} = mempty
 boundArrayAliases (Record fs) = foldMap boundArrayAliases fs
 boundArrayAliases (TypeVar als _ _ _) = boundAliases als
 boundArrayAliases Arrow{} = mempty
+boundArrayAliases SumT{} = mempty -- TODO: fix
 
 -- | The set of in-scope variables that are being aliased.
 boundAliases :: Aliasing -> S.Set VName

@@ -763,7 +763,8 @@ updatePattern (PatternAscription pat tydecl loc) sv
       PatternAscription (updatePattern pat sv) tydecl loc
   | otherwise = updatePattern pat sv
 updatePattern p@PatternLit{} _ = p
-updatePattern (PatternConstr n t ps loc) sv = PatternConstr n t (map (flip updatePattern sv) ps) loc --TODO: think about this
+updatePattern p@PatternConstr{} sv = error "shouldn't happen" --TODO: fix
+updatePattern p@(TuplePattern ps loc) (Dynamic (SumT cs)) = p --TODO: fix
 updatePattern pat (Dynamic t) = updatePattern pat (svFromType t)
 updatePattern pat sv =
   error $ "Tried to update pattern " ++ pretty pat
@@ -773,6 +774,7 @@ updatePattern pat sv =
 -- "unwrapping" tuples and records that are nested in 'Dynamic' static values.
 svFromType :: CompType -> StaticVal
 svFromType (Record fs) = RecordSV . M.toList $ M.map svFromType fs
+-- svFromType (SumT cs)   = RecordSV . M.toList $ M.map (map svFromType)
 svFromType t           = Dynamic t
 
 -- A set of names where we also track uniqueness.

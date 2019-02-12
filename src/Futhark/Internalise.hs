@@ -39,6 +39,8 @@ import Futhark.Internalise.Defunctorise as Defunctorise
 import Futhark.Internalise.Defunctionalise as Defunctionalise
 import Futhark.Internalise.Monomorphise as Monomorphise
 
+import Debug.Trace
+
 -- | Convert a program in source Futhark to a program in the Futhark
 -- core language.
 internaliseProg :: MonadFreshNames m =>
@@ -48,7 +50,8 @@ internaliseProg always_safe prog = do
   prog_decs' <- Monomorphise.transformProg prog_decs
   prog_decs'' <- Defunctionalise.transformProg prog_decs'
   prog' <- fmap (fmap I.Prog) $ runInternaliseM always_safe $ internaliseValBinds prog_decs''
-  traverse I.renameProg prog'
+  prog'' <- traverse I.renameProg prog'
+  return prog''
 
 internaliseValBinds :: [E.ValBind] -> InternaliseM ()
 internaliseValBinds = mapM_ internaliseValBind
@@ -147,7 +150,7 @@ generateEntryPoint (E.ValBind _ ofname retdecl (Info rettype) _ params _ _ loc) 
 entryPoint :: [(E.Pattern,[I.FParam])]
            -> (Maybe (E.TypeExp VName), E.StructType, [[I.TypeBase ExtShape Uniqueness]])
            -> EntryPoint
-entryPoint params (retdecl, eret, crets) =
+entryPoint params (retdecl, eret, crets) = do
   (concatMap (entryPointType . preParam) params,
    case isTupleRecord eret of
      Just ts -> concatMap entryPointType $ zip3 retdecls ts crets
@@ -245,8 +248,7 @@ internaliseExp desc (E.Index e idxs _ loc) = do
                    return $ I.BasicOp $ I.Index v $ fullSlice v_t idxs'
   certifying cs $ letSubExps desc =<< mapM index vs
 
-internaliseExp desc (E.TupLit es _) =
-  concat <$> mapM (internaliseExp desc) es
+internaliseExp desc (E.TupLit es _) = concat <$> mapM (internaliseExp desc) es
 
 internaliseExp desc (E.RecordLit orig_fields _) =
   concatMap snd . sortFields . M.unions . reverse <$> mapM internaliseField orig_fields
@@ -422,7 +424,7 @@ internaliseExp desc e@E.Apply{} = do
   -- Note that polymorphic functions (which are not magical) are not
   -- handled here.
   case () of
-    () | Just internalise <- isOverloadedFunction qfname args loc ->
+    () | Just internalise <- isOverloadedFunction qfname args loc -> do
            internalise desc
        | Just (rettype, _) <- M.lookup fname I.builtInFunctions -> do
            let tag ses = [ (se, I.Observe) | se <- ses ]
@@ -431,6 +433,7 @@ internaliseExp desc e@E.Apply{} = do
            letTupExp' desc $ I.Apply fname args'' [I.Prim rettype] (Safe, loc, [])
        | otherwise -> do
            args' <- concat <$> mapM (internaliseExp "arg") args
+           funcall' <- funcall desc qfname args' loc
            fst <$> funcall desc qfname args' loc
 
 internaliseExp desc (E.LetPat tparams pat e body loc) =
@@ -811,7 +814,7 @@ internaliseExp _ (E.VConstr0 c (Info t) loc) =
     _ -> fail $ "internaliseExp: nonsensical type for enum at "
                 ++ locStr loc ++ ": " ++ pretty t
 
-internaliseExp desc (E.Match  e cs _ loc) =
+internaliseExp desc (E.Match  e cs _ loc) = do
   case cs of
     [CasePat _ eCase _] -> internaliseExp desc eCase
     (c:cs') -> do
@@ -922,8 +925,6 @@ generateCond p e = foldr andExp (E.Literal (E.BoolValue True) noLoc) conds
         generateCond' (E.PatternAscription p' _ _) = generateCond' p'
         generateCond' (E.PatternLit ePat (Info t) _) =
           [(Just (eqExp ePat), removeShapeAnnotations t)]
-        -- generateCond' (E.PatternConstr n (Info t))
-
 
 generateCaseIf :: String -> E.Exp -> Case -> I.Body -> InternaliseM I.Exp
 generateCaseIf desc e (CasePat p eCase loc) bFail = do
