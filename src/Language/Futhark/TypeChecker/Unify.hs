@@ -37,8 +37,6 @@ import Language.Futhark.TypeChecker.Monad hiding (BoundV, checkQualNameWithEnv)
 import Language.Futhark.TypeChecker.Types hiding (checkTypeDecl)
 import Futhark.Util.Pretty (Pretty)
 
-import Debug.Trace
-
 -- | Mapping from fresh type variables, instantiated from the type
 -- schemes of polymorphic functions, to (possibly) specific types as
 -- determined on application and the location of that application, or
@@ -111,8 +109,6 @@ unify loc orig_t1 orig_t2 = do
             typeError loc $ "Couldn't match expected type `" ++
             pretty t1' ++ "' with actual type `" ++ pretty t2' ++ "'."
 
-      traceM $ unlines ["t1:" ++ show t1, "t2:" ++ show t2, "constraints:" ++ show constraints]
-      traceM $ unlines ["t1':" ++ show t1', "t2':" ++ show t2', "constraints:" ++ show constraints]
       case (t1', t2') of
         _ | t1' == t2' -> return ()
 
@@ -150,7 +146,6 @@ unify loc orig_t1 orig_t2 = do
         (Array{}, Array{})
           | Just t1'' <- peelArray 1 t1',
             Just t2'' <- peelArray 1 t2' -> do
-              traceM $ unlines ["t1'': " ++ show t1'', "t2''" ++ show t2'']
               subunify t1'' t2''
 
         (SumT cs,
@@ -162,9 +157,7 @@ unify loc orig_t1 orig_t2 = do
                 zipWithM_ subunify f1 f2 -- TODO: improve
               else
                 failure
-        foo@(_, _) -> do
-          traceM $ unlines ["foo" ++ show foo]
-          failure
+        (_, _) -> failure
 
       where unifyTypeArg TypeArgDim{} TypeArgDim{} = return ()
             unifyTypeArg (TypeArgType t _) (TypeArgType arg_t _) =
@@ -204,8 +197,6 @@ linkVarToType loc vn tp = do
                       TypeVar _ _ (TypeName [] v) []
                         | not $ isRigid v constraints -> linkVarToTypes loc v ts
                       _ -> do
-                        traceM $ "ts:" ++ show ts ++ "\n" ++ "tp:" ++ show tp ++ "\ntp':" ++ show tp'
-                                   ++ "\nvn:" ++ show vn
                         typeError loc $ "Cannot unify `" ++ prettyName vn ++ "' with type `" ++
                           pretty tp ++ "' (`" ++ prettyName vn ++
                           "` must be one of " ++ intercalate ", " (map pretty ts) ++
@@ -380,7 +371,7 @@ mustHaveConstr' loc c t fs = do
           modifyConstraints $ M.insert tn $ HasConstrs' (M.singleton c struct_f) loc
       | Just (HasConstrs' cs _) <- M.lookup tn constraints ->
         case M.lookup c cs of
-          Nothing  -> modifyConstraints $ M.insert tn $ HasConstrs' (M.singleton c fs) loc
+          Nothing  -> modifyConstraints $ M.insert tn $ HasConstrs' (M.insert c fs cs) loc
           Just fs'
             | length fs == length fs' -> zipWithM_ (unify loc) fs fs'
             | otherwise -> throwError $ TypeError loc "Differing constructor arity" -- TODO: Improve

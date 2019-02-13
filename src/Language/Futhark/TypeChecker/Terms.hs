@@ -37,8 +37,6 @@ import qualified Language.Futhark.TypeChecker.Types as Types
 import qualified Language.Futhark.TypeChecker.Monad as TypeM
 import Futhark.Util.Pretty hiding (space, bool)
 
-import Debug.Trace
-
 --- Uniqueness
 
 data Usage = Consumed SrcLoc
@@ -571,11 +569,15 @@ checkPattern' (PatternConstr n NoInfo ps loc) (Ascribed (SumT cs))
 
 checkPattern' p@(PatternConstr n NoInfo ps loc) (Ascribed t) = do
   --ps_ts <- replicateM (length ps) (newTypeVar loc "t")
+  --r <- newTypeVar loc "t"
   pts <- (fmap . fmap) patternType $ mapM ((flip checkPattern') NoneInferred) ps
   mustHaveConstr' loc n t (toStructural <$> pts)
   t' <- normaliseType t
-  checkPattern' p $ Ascribed t'
-  --PatternConstr n (Info t) <$> checkPattern' p (Ascribed t') <*> pure loc
+  --unify loc (toStructural t') (toStructural r)
+  --checkPattern' p $ Ascribed t'
+  PatternConstr n (Info t') <$> (mapM ((flip checkPattern') NoneInferred) ps) <*> pure loc
+
+checkPattern' (PatternConstr n NoInfo p loc) NoneInferred = error "oops"
 
 --checkPattern' (PatternConstr n NoInfo p loc) NoneInferred = do
 --  t <- newTypeVar loc "t"
@@ -703,12 +705,12 @@ bindingPattern tps p t m = do
   checkForDuplicateNames [p]
   checkTypeParams tps $ \tps' -> bindingTypeParams tps' $
     checkPattern p t $ \p' -> binding (S.toList $ patIdentSet p') $ do
-      -- Perform an observation of every declared dimension.  This
-      -- prevents unused-name warnings for otherwise unused dimensions.
-      mapM_ observe $ patternDims p'
-      checkShapeParamUses patternUses tps' [p']
+    -- Perform an observation of every declared dimension.  This
+    -- prevents unused-name warnings for otherwise unused dimensions.
+    mapM_ observe $ patternDims p'
+    checkShapeParamUses patternUses tps' [p']
 
-      m tps' p'
+    m tps' p'
 
 -- | Return the shapes used in a given pattern in postive and negative
 -- position, respectively.
@@ -852,8 +854,6 @@ checkExp (Ascript e decl loc) = do
   t <- toStruct <$> expType e'
   let decl_t = removeShapeAnnotations $ unInfo $ expandedType decl'
   constrs <- getConstraints
-  --traceM $ unlines ["e:" ++ show e, "t:" ++ show t, "decl_t: " ++ show decl_t
-  --                 , "constraints: " ++ show constrs]
   unify loc decl_t t
 
   -- We also have to make sure that uniqueness matches.  This is done
@@ -1314,7 +1314,7 @@ checkExp (VConstr0 name NoInfo loc) = do
 --  mustHaveConstr loc name t [toStructural pt]
 --  return $ VConstr1 name payload' (Info t) loc
 
-checkExp (Constr name es NoInfo loc) = do
+checkExp exp@(Constr name es NoInfo loc) = do
   t <- newTypeVar loc "t"
   es' <- mapM checkExp es
   ets <- mapM expType es'
@@ -1325,7 +1325,7 @@ checkExp (Constr name es NoInfo loc) = do
 checkExp (Match _ [] NoInfo loc) =
   typeError loc "Match expressions must have at least one case."
 
-checkExp (Match e (c:cs) NoInfo loc) =
+checkExp exp@(Match e (c:cs) NoInfo loc) = do
   sequentially (checkExp e) $ \e' _ -> do
     mt <- expType e'
     (cs', t) <- checkCases mt c cs
@@ -1349,7 +1349,7 @@ checkCases mt c (c2:cs) = do
 
 checkCase :: CompType -> CaseBase NoInfo Name
           -> TermTypeM (CaseBase Info VName, CompType)
-checkCase mt (CasePat p caseExp loc) =
+checkCase mt pat@(CasePat p caseExp loc) =
   bindingPattern [] p (Ascribed $ vacuousShapeAnnotations mt) $ \_ p' -> do
     caseExp' <- checkExp caseExp
     caseType <- expType caseExp'
@@ -1388,7 +1388,9 @@ unpackPat (TuplePattern ps _) = Just <$> ps
 unpackPat (RecordPattern fs _) = Just . snd <$> sortFields (M.fromList fs)
 unpackPat (PatternAscription p _ _) = unpackPat p
 unpackPat p@PatternLit{} = [Just p]
-unpackPat (PatternConstr _ _ ps _) = Just <$> ps
+unpackPat (PatternConstr n (Info (SumT cs))  ps lo) = Just <$> (sumToEnum : ps)
+  where sumToEnum = PatternLit (VConstr0 n (Info enumT) noLoc) (Info enumT) noLoc
+        enumT = Enum $ M.keys cs -- TODO: make this not jank
 
 wildPattern :: Pattern -> Int -> Unmatched Pattern -> Unmatched Pattern
 wildPattern (TuplePattern ps loc) pos um = f <$> um
