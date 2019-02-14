@@ -172,7 +172,7 @@ transformExp (Range e1 me incl tp loc) = do
   incl' <- mapM transformExp incl
   return $ Range e1' me' incl' tp loc
 
-transformExp exp@(Var (QualName qs fname) (Info t) loc) = do
+transformExp (Var (QualName qs fname) (Info t) loc) = do
   maybe_fs <- lookupRecordReplacement fname
   case maybe_fs of
     Just fs -> do
@@ -192,7 +192,7 @@ transformExp (LetPat tparams pat e1 e2 loc) = do
   LetPat tparams pat' <$> transformExp e1 <*>
     withRecordReplacements rr (transformExp e2) <*> pure loc
 
-transformExp exp@(LetFun fname (tparams, params, retdecl, Info ret, body) e loc)
+transformExp (LetFun fname (tparams, params, retdecl, Info ret, body) e loc)
   | any isTypeParam tparams = do
       -- Retrieve the lifted monomorphic function bindings that are produced,
       -- filter those that are monomorphic versions of the current let-bound
@@ -379,10 +379,9 @@ transformExp (Assert e1 e2 desc loc) =
 
 transformExp e@VConstr0{} = return e
 
-transformExp (Constr name es (Info t@(SumT cs)) loc) = do
-  es' <- mapM transformExp es
+transformExp (Constr name es (Info t@(SumT cs)) loc) =
   case constrIndex name t of
-    Nothing -> error "Malformed Constr value."
+    Nothing -> error "transFormExp: malformed constructor value."
     Just n  -> TupLit <$> ((index :) <$> clauses) <*> pure noLoc
       where index =  Literal (UnsignedValue (intValue Int8 n)) noLoc
             clauses = mapM clause $ sortConstrs cs
@@ -390,35 +389,29 @@ transformExp (Constr name es (Info t@(SumT cs)) loc) = do
               | name == name' = TupLit <$> mapM transformExp es <*> pure loc
               | otherwise     = return $ TupLit (map defaultValue ts) noLoc
 
-transformExp exp@(Match e cs t loc) =
-  Match <$> transformExp e <*> mapM transformCase cs <*> pure t <*> pure loc
+transformExp Constr{} = error "transformExp: invalid constructor type."
 
-constrStructure :: Name -> Int -> SrcLoc -> [Exp] -> CompType -> MonoM Exp
-constrStructure name n loc es (SumT cs) =
-  TupLit <$> expsM' <*> pure loc
-         where expsM' = (index:) <$> expsM
-               index = Literal (UnsignedValue (intValue Int8 n)) noLoc
-               expsM = mapM f (sortFields cs)
-               f (name', ts)
-                 | name == name' = TupLit <$> mapM transformExp es <*> pure loc
-                 | otherwise = return $ TupLit (map defaultValue ts) noLoc
+transformExp (Match e cs t loc) =
+  Match <$> transformExp e <*> mapM transformCase cs <*> pure t <*> pure loc
 
 constrIndex :: Name -> TypeBase dim as -> Maybe Int
 constrIndex name (SumT cs) = fst <$> L.find (\(_, (name', _)) -> name == name') cs'
   where cs' = zip [0..] $ sortConstrs cs
+constrIndex _ _ = error "constrIndex: invalid type."
 
 defaultValue :: CompType -> Exp
 defaultValue (Prim Bool) = Literal (BoolValue False) noLoc
-defaultValue (Prim (Unsigned s)) = Literal (UnsignedValue (intValue s 0)) noLoc
-defaultValue (Prim (Signed s)) = Literal (SignedValue (intValue s 0)) noLoc
-defaultValue (Prim (FloatType s)) = Literal (FloatValue (floatValue s 0)) noLoc
+defaultValue (Prim (Unsigned s)) = Literal (UnsignedValue (intValue s (0 :: Int))) noLoc
+defaultValue (Prim (Signed s)) = Literal (SignedValue (intValue s (0 :: Int))) noLoc
+defaultValue (Prim (FloatType s)) = Literal (FloatValue (floatValue s (0 :: Int))) noLoc
 defaultValue t@(Enum (c:_)) = VConstr0 c (Info t) noLoc
-defaultValue t@(SumT cs) = TupLit (defaultIndex : defaultClauses) noLoc
-  where defaultIndex   =  Literal (UnsignedValue (intValue Int8 0)) noLoc
+defaultValue (Enum []) = error "defaultVaule: empty enum type."
+defaultValue (SumT cs) = TupLit (defaultIndex : defaultClauses) noLoc
+  where defaultIndex   =  Literal (UnsignedValue (intValue Int8 (0 :: Int))) noLoc
         defaultClauses = map defaultClause $ sortConstrs cs
-        defaultClause (name, ts) = TupLit (map defaultValue ts) noLoc
+        defaultClause (_, ts) = TupLit (map defaultValue ts) noLoc
 defaultValue t@Array{} = ArrayLit [] (Info t) noLoc -- TODO: Does the shape need to be preserved?
-defaultValue t@(Record fs) = RecordLit (map f fs') noLoc
+defaultValue (Record fs) = RecordLit (map f fs') noLoc
   where fs' = sortFields fs
         f (name, t) = RecordFieldExplicit name (defaultValue t) noLoc
 defaultValue TypeVar{} = error "Shouldn't happen, I think"
@@ -523,6 +516,7 @@ expandRecordPattern (PatternConstr name (Info t@(SumT cs)) ps loc) = do
             clause (name', ts)
                  | name == name' = TuplePattern <$> (fmap . fmap) fst (mapM (expandRecordPattern) ps) <*> pure loc
                  | otherwise     = return $ TuplePattern (map (flip Wildcard noLoc) (map Info ts)) noLoc
+expandRecordPattern PatternConstr{} = error "expandRecordPattern: invalid pattern constructor type."
 
 -- | Monomorphize a polymorphic function at the types given in the instance
 -- list. Monomorphizes the body of the function as well. Returns the fresh name

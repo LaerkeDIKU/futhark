@@ -192,6 +192,7 @@ checkTypeExp (TEUnique t loc) = do
         mayContainArray TypeVar{} = True
         mayContainArray Arrow{} = False
         mayContainArray Enum{} = False
+        mayContainArray (SumT cs) = (any . any) mayContainArray cs
 checkTypeExp (TEArrow (Just v) t1 t2 loc) = do
   (t1', st1, _) <- checkTypeExp t1
   bindSpaced [(Term, v)] $ do

@@ -255,6 +255,7 @@ peelArray n (Array als u (ArrayRecordElem ts) shape)
         asType (RecordArrayElem (ArrayPolyElem bt targs)) = TypeVar als u bt targs
         asType (RecordArrayElem (ArrayRecordElem ts')) = Record $ fmap asType ts'
         asType (RecordArrayElem (ArrayEnumElem cs)) = Enum cs
+        asType (RecordArrayElem (ArraySumElem cs)) = SumT $ (fmap . fmap) asType cs
         asType (RecordArrayArrayElem et e_shape) = Array als u et e_shape
 peelArray n (Array _ _ (ArrayEnumElem cs) shape)
   | shapeRank shape == n =
@@ -264,8 +265,9 @@ peelArray n (Array als u (ArraySumElem cs) shape) -- TODO : fix
     Just $ SumT $ (fmap . fmap) asType cs
   where asType (RecordArrayElem (ArrayPrimElem bt)) = Prim bt
         asType (RecordArrayElem (ArrayPolyElem bt targs)) = TypeVar als u bt targs
-        asType (RecordArrayElem (ArrayRecordElem ts')) = Record $ fmap asType ts'
-        asType (RecordArrayElem (ArrayEnumElem cs)) = Enum cs
+        asType (RecordArrayElem (ArrayRecordElem ts)) = Record $ fmap asType ts
+        asType (RecordArrayElem (ArrayEnumElem cs')) = Enum cs'
+        asType (RecordArrayElem (ArraySumElem cs')) = SumT $ (fmap . fmap) asType cs'
         asType (RecordArrayArrayElem et e_shape) = Array als u et e_shape
 peelArray n (Array als u et shape) = do
   shape' <- stripDims n shape
@@ -328,6 +330,9 @@ typeToRecordArrayElem (Array _ _ et shape) =
 typeToRecordArrayElem Arrow{} = Nothing
 typeToRecordArrayElem (Enum cs) =
   Just $ RecordArrayElem $ ArrayEnumElem cs
+typeToRecordArrayElem (SumT cs) =
+  RecordArrayElem . ArraySumElem <$>
+  (traverse . traverse) typeToRecordArrayElem cs
 
 recordArrayElemToType :: Monoid as =>
                          RecordArrayElemTypeBase dim
@@ -579,6 +584,8 @@ returnType (Arrow _ v t1 t2) d arg =
   Arrow als v (bimap id (const mempty) t1) (t2 `setAliases` als)
   where als = aliases $ maskAliases arg d
 returnType (Enum cs) _ _ = Enum cs
+returnType (SumT cs) d arg =
+  SumT $ (fmap . fmap) (\et -> returnType et d arg) cs
 
 -- | Is the type concrete, i.e, without any type variables or function arrows?
 concreteType :: TypeBase f vn -> Bool
@@ -587,11 +594,13 @@ concreteType TypeVar{} = False
 concreteType Arrow{} = False
 concreteType (Record ts) = all concreteType ts
 concreteType Enum{} = True
+concreteType (SumT cs) =  (all . all) concreteType cs
 concreteType (Array _ _ at _) = concreteArrayType at
   where concreteArrayType ArrayPrimElem{}      = True
         concreteArrayType ArrayPolyElem{}      = False
         concreteArrayType (ArrayRecordElem ts) = all concreteRecordArrayElem ts
         concreteArrayType ArrayEnumElem{}      = True
+        concreteArrayType (ArraySumElem cs)    = (all . all) concreteRecordArrayElem cs
 
         concreteRecordArrayElem (RecordArrayElem et) = concreteArrayType et
         concreteRecordArrayElem (RecordArrayArrayElem et _) = concreteArrayType et
@@ -618,6 +627,7 @@ patternDimNames (Wildcard (Info tp) _) = typeDimNames tp
 patternDimNames (PatternAscription p (TypeDecl _ (Info t)) _) =
   patternDimNames p <> typeDimNames t
 patternDimNames (PatternLit _ (Info tp) _) = typeDimNames tp
+patternDimNames (PatternConstr _ _ ps _) = foldMap patternDimNames ps
 
 -- | Extract all the shape names that occur in a given type.
 typeDimNames :: TypeBase (DimDecl VName) als -> S.Set VName
@@ -637,6 +647,7 @@ patternOrderZero pat = case pat of
   Wildcard (Info t) _     -> orderZero t
   PatternAscription p _ _ -> patternOrderZero p
   PatternLit _ (Info t) _ -> orderZero t
+  PatternConstr _ _ ps _  -> all patternOrderZero ps
 
 -- | The set of identifiers bound in a pattern.
 patIdentSet :: (Functor f, Ord vn) => PatternBase f vn -> S.Set (IdentBase f vn)
@@ -647,7 +658,7 @@ patIdentSet (RecordPattern fs _)      = mconcat $ map (patIdentSet . snd) fs
 patIdentSet Wildcard{}                = mempty
 patIdentSet (PatternAscription p _ _) = patIdentSet p
 patIdentSet PatternLit{}              = mempty
-patIdentSet (PatternConstr n _ ps _ ) = mconcat $ map patIdentSet ps
+patIdentSet (PatternConstr _ _ ps _ ) = mconcat $ map patIdentSet ps
 
 -- | The type of values bound by the pattern.
 patternType :: PatternBase Info VName -> CompType
@@ -658,6 +669,7 @@ patternType (TuplePattern pats _)     = tupleRecord $ map patternType pats
 patternType (RecordPattern fs _)      = Record $ patternType <$> M.fromList fs
 patternType (PatternAscription p _ _) = patternType p
 patternType (PatternLit _ (Info t) _) = removeShapeAnnotations t
+patternType (PatternConstr _ (Info t) _ _) = removeShapeAnnotations t
 
 -- | The type of a pattern, including shape annotations.
 patternPatternType :: PatternBase Info VName -> PatternType
@@ -668,6 +680,7 @@ patternPatternType (TuplePattern pats _)      = tupleRecord $ map patternPattern
 patternPatternType (RecordPattern fs _)       = Record $ patternPatternType <$> M.fromList fs
 patternPatternType (PatternAscription p _ _)  = patternPatternType p
 patternPatternType (PatternLit _ (Info t) _)  = t
+patternPatternType (PatternConstr _ (Info t) _ _) = t
 
 -- | The type matched by the pattern, including shape declarations if present.
 patternStructType :: PatternBase Info VName -> StructType
@@ -701,6 +714,8 @@ patternNoShapeAnnotations (Wildcard (Info t) loc) =
   Wildcard (Info (vacuousShapeAnnotations t)) loc
 patternNoShapeAnnotations (PatternLit e (Info t) loc) =
   PatternLit e (Info (vacuousShapeAnnotations t)) loc
+patternNoShapeAnnotations (PatternConstr n (Info t) ps loc) =
+  PatternConstr n (Info (vacuousShapeAnnotations t)) ps loc
 
 -- | Names of primitive types to types.  This is only valid if no
 -- shadowing is going on, but useful for tools.

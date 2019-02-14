@@ -567,23 +567,17 @@ checkPattern' (PatternConstr n NoInfo ps loc) (Ascribed (SumT cs))
       ps' <- mapM (uncurry checkPattern') $ zip ps $ map Ascribed ts
       return $ PatternConstr n (Info (SumT cs)) ps' loc
 
-checkPattern' p@(PatternConstr n NoInfo ps loc) (Ascribed t) = do
-  --ps_ts <- replicateM (length ps) (newTypeVar loc "t")
-  --r <- newTypeVar loc "t"
-  pts <- (fmap . fmap) patternType $ mapM ((flip checkPattern') NoneInferred) ps
-  mustHaveConstr' loc n t (toStructural <$> pts)
+checkPattern' (PatternConstr n NoInfo ps loc) (Ascribed t) = do
+  ps' <- mapM ((flip checkPattern') NoneInferred) ps
+  mustHaveConstr' loc n t (toStructural . patternType <$> ps')
   t' <- normaliseType t
-  --unify loc (toStructural t') (toStructural r)
-  --checkPattern' p $ Ascribed t'
-  PatternConstr n (Info t') <$> (mapM ((flip checkPattern') NoneInferred) ps) <*> pure loc
+  return $ PatternConstr n (Info t') ps' loc
 
-checkPattern' (PatternConstr n NoInfo p loc) NoneInferred = error "oops"
-
---checkPattern' (PatternConstr n NoInfo p loc) NoneInferred = do
---  t <- newTypeVar loc "t"
---  pt <- patternType <$> checkPattern' p NoneInferred
---  mustHaveConstr loc n t [toStructural pt]
---  PatternConstr n (Info t) <$> checkPattern' p (Ascribed (vacuousShapeAnnotations pt)) <*> pure loc
+checkPattern' (PatternConstr n NoInfo ps loc) NoneInferred = do
+  ps' <- mapM ((flip checkPattern') NoneInferred) ps
+  t <- newTypeVar loc "t"
+  mustHaveConstr' loc n t (toStructural . patternType <$> ps')
+  return $ PatternConstr n (Info t) ps' loc
 
 bindPatternNames :: PatternBase NoInfo Name -> TermTypeM a -> TermTypeM a
 bindPatternNames = bindSpaced . map asTerm . S.toList . patIdentSet
@@ -723,7 +717,7 @@ patternUses (TuplePattern ps _) = foldMap patternUses ps
 patternUses (RecordPattern fs _) = foldMap (patternUses . snd) fs
 patternUses (PatternAscription p (TypeDecl declte _) _) =
   patternUses p <> typeExpUses declte
-patternUses (PatternConstr n _ ps _) = foldMap patternUses ps
+patternUses (PatternConstr _ _ ps _) = foldMap patternUses ps
 
 noTypeParamsPermitted :: [UncheckedTypeParam] -> TermTypeM ()
 noTypeParamsPermitted ps =
@@ -853,7 +847,6 @@ checkExp (Ascript e decl loc) = do
   e' <- checkExp e
   t <- toStruct <$> expType e'
   let decl_t = removeShapeAnnotations $ unInfo $ expandedType decl'
-  constrs <- getConstraints
   unify loc decl_t t
 
   -- We also have to make sure that uniqueness matches.  This is done
@@ -1257,6 +1250,8 @@ checkExp (DoLoop tparams mergepat mergeexp form loopbody loc) =
           uniquePat (PatternAscription p t ploc) =
             PatternAscription p t ploc
           uniquePat p@PatternLit{} = p
+          uniquePat (PatternConstr n t ps ploc) =
+            PatternConstr n t (map uniquePat ps) ploc
 
           -- Make the pattern unique where needed.
           pat' = uniquePat pat
@@ -1307,25 +1302,17 @@ checkExp (VConstr0 name NoInfo loc) = do
   mustHaveConstr loc name t
   return $ VConstr0 name (Info t) loc
 
---checkExp (VConstr1 name payload NoInfo loc) = do
---  t <- newTypeVar loc "t"
---  payload' <- checkExp payload
---  pt <- expType payload'
---  mustHaveConstr loc name t [toStructural pt]
---  return $ VConstr1 name payload' (Info t) loc
-
-checkExp exp@(Constr name es NoInfo loc) = do
+checkExp (Constr name es NoInfo loc) = do
   t <- newTypeVar loc "t"
   es' <- mapM checkExp es
   ets <- mapM expType es'
   mustHaveConstr' loc name t (toStructural <$> ets)
-  constrs <- getConstraints
   return $ Constr name es' (Info t) loc
 
 checkExp (Match _ [] NoInfo loc) =
   typeError loc "Match expressions must have at least one case."
 
-checkExp exp@(Match e (c:cs) NoInfo loc) = do
+checkExp (Match e (c:cs) NoInfo loc) = do
   sequentially (checkExp e) $ \e' _ -> do
     mt <- expType e'
     (cs', t) <- checkCases mt c cs
@@ -1349,7 +1336,7 @@ checkCases mt c (c2:cs) = do
 
 checkCase :: CompType -> CaseBase NoInfo Name
           -> TermTypeM (CaseBase Info VName, CompType)
-checkCase mt pat@(CasePat p caseExp loc) =
+checkCase mt (CasePat p caseExp loc) =
   bindingPattern [] p (Ascribed $ vacuousShapeAnnotations mt) $ \_ p' -> do
     caseExp' <- checkExp caseExp
     caseType <- expType caseExp'
@@ -1388,9 +1375,10 @@ unpackPat (TuplePattern ps _) = Just <$> ps
 unpackPat (RecordPattern fs _) = Just . snd <$> sortFields (M.fromList fs)
 unpackPat (PatternAscription p _ _) = unpackPat p
 unpackPat p@PatternLit{} = [Just p]
-unpackPat (PatternConstr n (Info (SumT cs))  ps lo) = Just <$> (sumToEnum : ps)
-  where sumToEnum = PatternLit (VConstr0 n (Info enumT) noLoc) (Info enumT) noLoc
+unpackPat (PatternConstr n (Info (SumT cs))  ps loc) = Just <$> (sumToEnum : ps)
+  where sumToEnum = PatternLit (VConstr0 n (Info enumT) loc) (Info enumT) noLoc
         enumT = Enum $ M.keys cs -- TODO: make this not jank
+unpackPat PatternConstr{} = error "Should never happen."
 
 wildPattern :: Pattern -> Int -> Unmatched Pattern -> Unmatched Pattern
 wildPattern (TuplePattern ps loc) pos um = f <$> um

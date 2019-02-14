@@ -883,6 +883,11 @@ newNamesForMTy orig_mty = do
             _ -> error "substituteInType: Cannot create array after substitution."
         substituteInType (Array () u (ArrayEnumElem cs) shape) =
           Array () u (ArrayEnumElem cs) (substituteInShape shape)
+        substituteInType (Array () u (ArraySumElem cs) shape) =
+          let cs' = (fmap .fmap) (substituteInType . recordArrayElemToType) cs
+          in case arrayOf (SumT cs') (substituteInShape shape) u of
+            Just t' -> t'
+            _ -> error "substituteInType: Cannot create array after substitution."
         substituteInType (Arrow als v t1 t2) =
           Arrow als v (substituteInType t1) (substituteInType t2)
 

@@ -141,6 +141,7 @@ toValueType TERecord{} = Left "Cannot handle records yet."
 toValueType TEApply{} = Left "Cannot handle type applications yet."
 toValueType TEArrow{} = Left "Cannot generate functions."
 toValueType TEEnum{} = Left "Cannot handle enums yet."
+toValueType TESum{} = Left "Cannot handle enums yet."
 toValueType (TEUnique t _) = toValueType t
 toValueType (TEArray t d _) = do
   d' <- constantDim d

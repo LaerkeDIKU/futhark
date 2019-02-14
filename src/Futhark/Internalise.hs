@@ -39,8 +39,6 @@ import Futhark.Internalise.Defunctorise as Defunctorise
 import Futhark.Internalise.Defunctionalise as Defunctionalise
 import Futhark.Internalise.Monomorphise as Monomorphise
 
-import Debug.Trace
-
 -- | Convert a program in source Futhark to a program in the Futhark
 -- core language.
 internaliseProg :: MonadFreshNames m =>
@@ -433,7 +431,6 @@ internaliseExp desc e@E.Apply{} = do
            letTupExp' desc $ I.Apply fname args'' [I.Prim rettype] (Safe, loc, [])
        | otherwise -> do
            args' <- concat <$> mapM (internaliseExp "arg") args
-           funcall' <- funcall desc qfname args' loc
            fst <$> funcall desc qfname args' loc
 
 internaliseExp desc (E.LetPat tparams pat e body loc) =
@@ -814,6 +811,9 @@ internaliseExp _ (E.VConstr0 c (Info t) loc) =
     _ -> fail $ "internaliseExp: nonsensical type for enum at "
                 ++ locStr loc ++ ": " ++ pretty t
 
+internaliseExp _ e@E.Constr{} =
+  fail $ "internaliseExp: unexpected constructor at " ++ locStr (srclocOf e)
+
 internaliseExp desc (E.Match  e cs _ loc) = do
   case cs of
     [CasePat _ eCase _] -> internaliseExp desc eCase
@@ -925,6 +925,8 @@ generateCond p e = foldr andExp (E.Literal (E.BoolValue True) noLoc) conds
         generateCond' (E.PatternAscription p' _ _) = generateCond' p'
         generateCond' (E.PatternLit ePat (Info t) _) =
           [(Just (eqExp ePat), removeShapeAnnotations t)]
+        generateCond' E.PatternConstr{} =
+          fail $ "generateCond: unexpected pattern constructor."
 
 generateCaseIf :: String -> E.Exp -> Case -> I.Body -> InternaliseM I.Exp
 generateCaseIf desc e (CasePat p eCase loc) bFail = do
@@ -1755,6 +1757,12 @@ typeExpForError cm (E.TEApply t arg _) = do
   return $ t' ++ [" "] ++ arg'
 typeExpForError _ e@E.TEEnum{} =
   return [ErrorString $ pretty e]
+typeExpForError cm (E.TESum cs _) = do
+  cs' <- mapM onClause $ map snd cs
+  return $ intercalate [" | "] cs'
+  where onClause c = do
+          c' <- mapM (typeExpForError cm) c
+          return $ intercalate [" "] c'
 
 dimDeclForError :: ConstParams -> E.DimDecl VName -> InternaliseM (ErrorMsgPart SubExp)
 dimDeclForError cm (NamedDim d) = do
