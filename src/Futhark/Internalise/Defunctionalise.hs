@@ -386,7 +386,8 @@ defuncExp e@VConstr0{} = return (e, Dynamic $ typeOf e)
 
 defuncExp Constr{} = error "defuncExp: unexpected constructor."
 
-defuncExp (Match e cs t loc) = do
+defuncExp exp@(Match e cs t loc) = do
+  traceM' $ unlines ["defuncExp match", "exp: " ++ show exp]
   (e', sv) <- defuncExp e
   csPairs  <- mapM (defuncCase sv) cs
   let cs' = map fst csPairs
@@ -400,9 +401,11 @@ defuncExp' :: Exp -> DefM Exp
 defuncExp' = fmap fst . defuncExp
 
 defuncCase :: StaticVal -> Case -> DefM (Case, StaticVal)
-defuncCase sv (CasePat p e loc) = do
+defuncCase sv p_@(CasePat p e loc) = do
+  traceM' $ unlines ["defuncCase", "p_: " ++ show p_, "sv:" ++ show sv]
   let p'  = updatePattern p sv
       env = matchPatternSV p sv
+  traceM' $ unlines ["p': " ++ show p']
   (e', sv') <- localEnv env $ defuncExp e
   return (CasePat p' e' loc, sv')
 
@@ -767,7 +770,6 @@ updatePattern (PatternAscription pat tydecl loc) sv
   | otherwise = updatePattern pat sv
 updatePattern p@PatternLit{} _ = p
 updatePattern PatternConstr{} _ = error "updatePattern: unexpected pattern constructor."
--- updatePattern p@TuplePattern{} (Dynamic SumT{}) = p --TODO: fix
 updatePattern pat (Dynamic t) = updatePattern pat (svFromType t)
 updatePattern pat sv =
   error $ "Tried to update pattern " ++ pretty pat
@@ -777,7 +779,6 @@ updatePattern pat sv =
 -- "unwrapping" tuples and records that are nested in 'Dynamic' static values.
 svFromType :: CompType -> StaticVal
 svFromType (Record fs) = RecordSV . M.toList $ M.map svFromType fs
--- svFromType (SumT cs)   = RecordSV . M.toList $ M.map (map svFromType)
 svFromType t           = Dynamic t
 
 -- A set of names where we also track uniqueness.

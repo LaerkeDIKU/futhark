@@ -358,6 +358,7 @@ instance (Eq dim, Eq as) => Eq (TypeBase dim as) where
   TypeVar _ u1 x1 y1 == TypeVar _ u2 x2 y2 = u1 == u2 && x1 == x2 && y1 == y2
   Arrow _ _ x1 y1 == Arrow _ _ x2 y2 = x1 == x2 && y1 == y2
   Enum ns1 == Enum ns2 = sort ns1 == sort ns2
+  SumT cs1 == SumT cs2 = cs1 == cs2
   _ == _ = False
 
 instance Bitraversable TypeBase where

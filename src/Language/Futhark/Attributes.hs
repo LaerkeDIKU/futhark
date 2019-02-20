@@ -68,6 +68,8 @@ module Language.Futhark.Attributes
   , vacuousShapeAnnotations
   , typeToRecordArrayElem
   , recordArrayElemToType
+  , arrayElemToType
+  , typeToArrayElem
   , tupleRecord
   , isTupleRecord
   , areTupleFields
@@ -349,6 +351,22 @@ arrayElemToType (ArrayPrimElem bt) = Prim bt
 arrayElemToType (ArrayEnumElem cs) = Enum cs
 arrayElemToType (ArraySumElem cs) =
   SumT $ (fmap . fmap) recordArrayElemToType cs
+
+typeToArrayElem :: Monoid as => TypeBase dim as -> Maybe (ArrayElemTypeBase dim)
+typeToArrayElem (Prim bt) =
+  Just $ ArrayPrimElem bt
+typeToArrayElem (TypeVar _ _ bt targs) =
+  Just $ ArrayPolyElem bt targs
+typeToArrayElem (Record ts') =
+  ArrayRecordElem <$> traverse typeToRecordArrayElem ts'
+typeToArrayElem (Array _ _ et _) =
+  Just $ et
+typeToArrayElem Arrow{} = Nothing
+typeToArrayElem (Enum cs) =
+  Just $ ArrayEnumElem cs
+typeTodArrayElem (SumT cs) =
+  ArraySumElem <$>
+  (traverse . traverse) typeToRecordArrayElem cs
 
 -- | @stripArray n t@ removes the @n@ outermost layers of the array.
 -- Essentially, it is the type of indexing an array of type @t@ with

@@ -192,7 +192,7 @@ transformExp (LetPat tparams pat e1 e2 loc) = do
   LetPat tparams pat' <$> transformExp e1 <*>
     withRecordReplacements rr (transformExp e2) <*> pure loc
 
-transformExp (LetFun fname (tparams, params, retdecl, Info ret, body) e loc)
+transformExp exp@(LetFun fname (tparams, params, retdecl, Info ret, body) e loc)
   | any isTypeParam tparams = do
       -- Retrieve the lifted monomorphic function bindings that are produced,
       -- filter those that are monomorphic versions of the current let-bound
@@ -537,9 +537,14 @@ monomorphizeBinding (PolyBinding (name, tparams, params, retdecl, rettype, body,
 
   body' <- updateExpTypes (`M.lookup` substs) body
   body'' <- withRecordReplacements (mconcat rrs) $ transformExp body'
+  body''' <- astMap noMoreSumTypes body''
   params''' <- astMap noMoreSumTypes params''
+  traceM' $ unlines ["monomorphizeBindings"
+                    , "bind_t:" ++ show bind_t, "t':" ++ show t'
+                    , "params'':" ++ show params''
+                    , "params''':" ++ show params''']
   name' <- if null tparams then return name else newName name
-  return (name', toValBinding name' params''' rettype' body'')
+  return (name', toValBinding name' params''' rettype' body''')
 
   where shape_params = filter (not . isTypeParam) tparams
 
@@ -589,6 +594,10 @@ typeSubsts t1@Array{} t2@Array{}
     Just t2' <- peelArray (arrayRank t1) t2 =
       typeSubsts t1' t2'
 typeSubsts Enum{} Enum{} = mempty
+typeSubsts (SumT cs1) (SumT cs2) =
+  (mconcat . mconcat) $ zipWith typeSubstClause (sortConstrs cs1) (sortConstrs cs2)
+  where typeSubstClause (_, ts1) (_, ts2) = zipWith typeSubsts ts1 ts2
+
 typeSubsts t1 t2 = error $ unlines ["typeSubsts: mismatched types:", pretty t1, pretty t2]
 
 -- | Perform a given substitution on the types in a pattern.
@@ -638,21 +647,28 @@ removeTypeVariablesInType t = do
   subs <- asks $ M.map TypeSub . envTypeBindings
   return $ removeShapeAnnotations $ substituteTypes subs $ vacuousShapeAnnotations t
 
-removeSumTypes :: TypeBase dim as -> TypeBase dim as
+removeSumTypes :: Monoid as => TypeBase dim as -> TypeBase dim as
 removeSumTypes (SumT cs) =
   tupleRecord $ Prim (Unsigned Int8) : map (tupleRecord . snd) (sortConstrs cs)
 removeSumTypes (Arrow as v t1 t2) = Arrow as v (removeSumTypes t1) (removeSumTypes t2)
 removeSumTypes (Record fs) = Record $ M.map removeSumTypes fs
+removeSumTypes (Array as u ts shape) =
+  case  (typeToArrayElem . removeSumTypes . arrayElemToType') ts of
+    Nothing  -> error "Shouldn't happen."
+    Just ts' -> Array as u ts' shape
+  where arrayElemToType' :: ArrayElemTypeBase dim -> TypeBase dim ()
+        arrayElemToType' = arrayElemToType -- Needed to make ghc happy :)
+--removeSumTypes t@(TypeVar as u n args) = error $ show $ toStructural t  "No type variables should remain."
+--removeSumTypes t@Prim{} = t
 removeSumTypes t = t
--- TODO: Arrays, TypeVars
 
 transformValBind :: ValBind -> MonoM Env
 transformValBind valbind = do
   valbind' <- toPolyBinding <$> removeTypeVariables valbind
   when (valBindEntryPoint valbind) $ do
-    t <- removeTypeVariablesInType $ removeSumTypes $ removeShapeAnnotations $ foldFunType
+    t <- removeSumTypes <$> (removeTypeVariablesInType $ removeShapeAnnotations $ foldFunType
          (map patternStructType (valBindParams valbind)) $
-         unInfo $ valBindRetType valbind
+         unInfo $ valBindRetType valbind)
     (name, valbind'') <- monomorphizeBinding valbind' t
     tell $ Seq.singleton (name, valbind'' { valBindEntryPoint = True})
     addLifted (valBindName valbind) t name

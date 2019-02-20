@@ -435,9 +435,7 @@ TypeExpTerm :: { UncheckedTypeExp }
 
 SumType :: { UncheckedTypeExp }
 SumType  : SumClauses { let (cs, loc) = $1
-                        in if (sum (map (length . snd) cs)) > 0
-                           then TESum cs loc
-                           else TEEnum (map fst cs) loc } -- TODO: Get rid of the TEENum constructor
+                        in TESum cs loc }
 
 SumClauses :: { ([(Name, [UncheckedTypeExp])], SrcLoc) }
             : SumClauses '|' SumClause { let (cs, loc1) = $1;
@@ -604,7 +602,7 @@ Exps :: { [UncheckedExp] }
 
 Apply_ :: { UncheckedExp }
        : ApplyList { case $1 of
-                       ((VConstr0 n _ loc1):_:_) -> Constr n (tail $1) NoInfo (srcspan loc1 (last $1))
+                       ((Constr n [] _ loc1):_) -> Constr n (tail $1) NoInfo (srcspan loc1 (last $1))
                        _                -> foldl1 (\f x -> Apply f x NoInfo NoInfo (srcspan f x)) $1 }
 
 ApplyList :: { [UncheckedExp] }
@@ -625,7 +623,7 @@ Apply :: { UncheckedExp }
 
 Atom :: { UncheckedExp }
 Atom : PrimLit        { Literal (fst $1) (snd $1) }
-     | VConstr0       { VConstr0 (fst $1) NoInfo (snd $1) }
+     | VConstr0       { Constr (fst $1) [] NoInfo (snd $1) }
      | intlit         { let L loc (INTLIT x) = $1 in IntLit x NoInfo loc }
      | floatlit       { let L loc (FLOATLIT x) = $1 in FloatLit x NoInfo loc }
      | stringlit      { let L loc (STRINGLIT s) = $1 in
@@ -780,7 +778,7 @@ ConstrPattern :: { PatternBase NoInfo Name}
                                          in PatternConstr n NoInfo $2 loc'}
 
 ConstrFields :: { [PatternBase NoInfo Name] }
-              : CPattern                { [$1] }
+              : {- empty -}                { [] }
               | ConstrFields CPattern   { $1 ++ [$2] }
 
 CFieldPattern :: { (Name, PatternBase NoInfo Name) }
@@ -805,7 +803,6 @@ CaseLiteral :: { (UncheckedExp, SrcLoc) }
              | floatlit       { let L loc (FLOATLIT x) = $1 in (FloatLit x NoInfo loc, loc) }
              | stringlit      { let L loc (STRINGLIT s) = $1 in
                               (ArrayLit (map (flip Literal loc . SignedValue . Int32Value . fromIntegral . ord) s) NoInfo loc, loc) }
-             | VConstr0       { (VConstr0 (fst $1) NoInfo (snd $1), snd $1) }
 
 LoopForm :: { LoopFormBase NoInfo Name }
 LoopForm : for VarId '<' Exp

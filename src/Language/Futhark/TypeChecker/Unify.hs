@@ -109,6 +109,7 @@ unify loc orig_t1 orig_t2 = do
             typeError loc $ "Couldn't match expected type `" ++
             pretty t1' ++ "' with actual type `" ++ pretty t2' ++ "'."
 
+      traceM' $ unlines ["t1':" ++ show t1', "t2':" ++ show t2', "constraints:" ++ show constraints]
       case (t1', t2') of
         _ | t1' == t2' -> return ()
 
@@ -186,6 +187,10 @@ linkVarToType loc vn tp = do
          prettyName vn ++ " with " ++ pretty tp'
     else do modifyConstraints $ M.insert vn $ Constraint tp' loc
             modifyConstraints $ M.map $ applySubstInConstraint vn tp'
+            traceM' $ unlines ["linkVarToType"
+                              , "tp:" ++ show tp
+                              , "vn: " ++ show vn
+                              , "constraints on vn:" ++ show (M.lookup vn constraints)]
             case M.lookup vn constraints of
               Just (NoConstraint (Just Unlifted) unlift_loc) ->
                 zeroOrderType loc ("used at " ++ locStr unlift_loc) tp'
@@ -243,10 +248,13 @@ linkVarToType loc vn tp = do
                         mapM_ (uncurry (zipWithM_ (unify loc))) $ M.elems $
                           M.intersectionWith (,) required_cs ts
                   TypeVar _ _ (TypeName [] v) []
-                    | not $ isRigid v constraints ->
-                        modifyConstraints $ M.insert v $
-                        HasConstrs' required_cs old_loc
-                  _ -> typeError loc "Can't unify" -- TODO : Improve
+                    | not $ isRigid v constraints -> do
+                        modifyConstraints $ M.insertWith combineConstrs v $
+                                   HasConstrs' required_cs old_loc
+                        where combineConstrs (HasConstrs' cs1 loc) (HasConstrs' cs2 _) =
+                                HasConstrs' (M.union cs1 cs2) loc
+                              combineConstrs hasCs _ = hasCs
+                  _ -> typeError loc "Can't unify." -- TODO : Improve
               _ -> return ()
   where tp' = removeUniqueness tp
 

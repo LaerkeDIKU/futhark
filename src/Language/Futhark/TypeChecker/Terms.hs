@@ -568,10 +568,12 @@ checkPattern' (PatternConstr n NoInfo ps loc) (Ascribed (SumT cs))
       return $ PatternConstr n (Info (SumT cs)) ps' loc
 
 checkPattern' (PatternConstr n NoInfo ps loc) (Ascribed t) = do
+  t' <- newTypeVar loc "t"
   ps' <- mapM ((flip checkPattern') NoneInferred) ps
-  mustHaveConstr' loc n t (toStructural . patternType <$> ps')
-  t' <- normaliseType t
-  return $ PatternConstr n (Info t') ps' loc
+  mustHaveConstr' loc n t' (toStructural . patternType <$> ps')
+  unify loc t' (toStructural t)
+  t'' <- normaliseType t
+  return $ PatternConstr n (Info t'') ps' loc
 
 checkPattern' (PatternConstr n NoInfo ps loc) NoneInferred = do
   ps' <- mapM ((flip checkPattern') NoneInferred) ps
@@ -1312,9 +1314,12 @@ checkExp (Constr name es NoInfo loc) = do
 checkExp (Match _ [] NoInfo loc) =
   typeError loc "Match expressions must have at least one case."
 
-checkExp (Match e (c:cs) NoInfo loc) = do
+checkExp exp@(Match e (c:cs) NoInfo loc) = do
+  constraints <- getConstraints
+  traceM' $ unlines ["checkExp Match", "exp: " ++ pretty exp, "constraints:" ++ show constraints]
   sequentially (checkExp e) $ \e' _ -> do
     mt <- expType e'
+    traceM' $ unlines ["mt" ++ show mt]
     (cs', t) <- checkCases mt c cs
     zeroOrderType loc "returned from pattern match" t
     return $ Match e' cs' (Info t) loc
@@ -1329,6 +1334,8 @@ checkCases mt c [] = do
 checkCases mt c (c2:cs) = do
   (((c', c_t), (cs', cs_t)), dflow) <-
     tapOccurences $ checkCase mt c `alternative` checkCases mt c2 cs
+  constraints <- getConstraints
+  traceM' $ unlines ["checkCases", "c_t: " ++ show c_t, "cs_t: " ++ show cs_t, "constraints: " ++ show constraints]
   unify (srclocOf c) (toStruct c_t) (toStruct cs_t)
   let t = unifyTypeAliases c_t cs_t `addAliases`
         (`S.difference` S.map AliasBound (allConsumed dflow))
@@ -1378,7 +1385,7 @@ unpackPat p@PatternLit{} = [Just p]
 unpackPat (PatternConstr n (Info (SumT cs))  ps loc) = Just <$> (sumToEnum : ps)
   where sumToEnum = PatternLit (VConstr0 n (Info enumT) loc) (Info enumT) noLoc
         enumT = Enum $ M.keys cs -- TODO: make this not jank
-unpackPat PatternConstr{} = error "Should never happen."
+unpackPat p@PatternConstr{} = error $ "Should never happen: " ++ show p
 
 wildPattern :: Pattern -> Int -> Unmatched Pattern -> Unmatched Pattern
 wildPattern (TuplePattern ps loc) pos um = f <$> um
@@ -1600,6 +1607,8 @@ checkFunDef f = fmap fst $ runTermTypeM $ do
   maybe_retdecl' <- traverse updateExpTypes maybe_retdecl
   rettype' <- normaliseType rettype
 
+  constraints <- getConstraints
+  traceM' $ unlines ["checkFunDef", "f: " ++ show f, "body':" ++ show body', "constraints:" ++ show constraints]
   -- Check if pattern matches are exhaustive and yield
   -- errors if not.
   checkUnmatched body'
@@ -1810,6 +1819,7 @@ letGeneralise tparams ts then_substs = do
   -- let-generalisation.
   modifyConstraints $ M.filterWithKey $ \k _ -> k `notElem` map typeParamName tparams'
 
+  traceM' $ unlines ["letGenrealise", "ts:" ++ show ts]
   return tparams'
 
 checkFunBody :: ExpBase NoInfo Name
@@ -1817,6 +1827,7 @@ checkFunBody :: ExpBase NoInfo Name
              -> SrcLoc
              -> TermTypeM Exp
 checkFunBody body maybe_rettype _loc = do
+  constraints <- getConstraints
   body' <- checkExp body
 
   -- Unify body return type with return annotation, if one exists.
@@ -1828,6 +1839,10 @@ checkFunBody body maybe_rettype _loc = do
       -- explicitly, because uniqueness is ignored by unification.
       rettype_structural' <- normaliseType rettype_structural
       body_t <- expType body'
+      traceM' $ unlines ["checkFunBody", "constraints: " ++ show constraints
+                       , "body_t: " ++ show body_t, "rettype_structural': " ++ show rettype_structural'
+                       , "body: " ++ show body
+                       , "body': " ++ show body']
       unless (body_t `subtypeOf` rettype_structural') $
         typeError (srclocOf body) $ "Body type `" ++ pretty body_t ++
         "' is not a subtype of annotated type `" ++
