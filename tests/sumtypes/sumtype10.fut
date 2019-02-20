@@ -1,6 +1,5 @@
 -- Inexhaustive sumtype pattern match.
 -- ==
--- input { } 
 -- error: 
 
 type foobar = #foo i32 | #bar i32

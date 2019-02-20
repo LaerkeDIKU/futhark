@@ -1,6 +1,5 @@
 -- Fail if lacking a type annotation.
 -- ==
--- input { } 
 -- error:
 
 let main : i32 =

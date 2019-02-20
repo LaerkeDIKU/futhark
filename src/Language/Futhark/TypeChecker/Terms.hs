@@ -1650,6 +1650,10 @@ fixOverloadedTypes = getConstraints >>= mapM_ fixOverloaded . M.toList
                                     ,"Add a type annotation to disambiguate the type."]
           where cs' = intercalate " | " $ map (\c -> '#' : pretty c) cs
 
+        fixOverloaded (_, HasConstrs' cs loc) =
+          typeError loc $ unlines [ "Type is ambiguous (must be a sum type with constructors: " ++ pretty (SumT cs) ++ ")."
+                                    ,"Add a type annotation to disambiguate the type."]
+
         fixOverloaded _ = return ()
 
 checkFunDef' :: (Name, Maybe UncheckedTypeExp,
