@@ -139,7 +139,6 @@ nestedDims t =
             Prim{}              -> mempty
             TypeVar _ _ _ targs -> concatMap typeArgDims targs
             Arrow _ v t1 t2     -> filter (notV v) $ nestedDims t1 <> nestedDims t2
-            Enum{}              -> []
             SumT cs             -> nub $ fold $ (fmap . concatMap) nestedDims cs
 
   where arrayNestedDims ArrayPrimElem{} =
@@ -148,7 +147,6 @@ nestedDims t =
           concatMap typeArgDims targs
         arrayNestedDims (ArrayRecordElem ts) =
           fold (fmap recordArrayElemNestedDims ts)
-        arrayNestedDims ArrayEnumElem{} = mempty
         arrayNestedDims (ArraySumElem cs) =
           fold (fmap (concatMap recordArrayElemNestedDims) cs)
 
@@ -207,7 +205,6 @@ diet TypeVar{}               = Observe
 diet (Arrow _ _ t1 t2)       = FuncDiet (diet t1) (diet t2)
 diet (Array _ Unique _ _)    = Consume
 diet (Array _ Nonunique _ _) = Observe
-diet Enum{}                  = Observe
 diet SumT{}                  = Observe
 
 -- | @t `maskAliases` d@ removes aliases (sets them to 'mempty') from
@@ -256,19 +253,14 @@ peelArray n (Array als u (ArrayRecordElem ts) shape)
   where asType (RecordArrayElem (ArrayPrimElem bt)) = Prim bt
         asType (RecordArrayElem (ArrayPolyElem bt targs)) = TypeVar als u bt targs
         asType (RecordArrayElem (ArrayRecordElem ts')) = Record $ fmap asType ts'
-        asType (RecordArrayElem (ArrayEnumElem cs)) = Enum cs
         asType (RecordArrayElem (ArraySumElem cs)) = SumT $ (fmap . fmap) asType cs
         asType (RecordArrayArrayElem et e_shape) = Array als u et e_shape
-peelArray n (Array _ _ (ArrayEnumElem cs) shape)
-  | shapeRank shape == n =
-    Just $ Enum cs
 peelArray n (Array als u (ArraySumElem cs) shape) -- TODO : fix
   | shapeRank shape == n =
     Just $ SumT $ (fmap . fmap) asType cs
   where asType (RecordArrayElem (ArrayPrimElem bt)) = Prim bt
         asType (RecordArrayElem (ArrayPolyElem bt targs)) = TypeVar als u bt targs
         asType (RecordArrayElem (ArrayRecordElem ts)) = Record $ fmap asType ts
-        asType (RecordArrayElem (ArrayEnumElem cs')) = Enum cs'
         asType (RecordArrayElem (ArraySumElem cs')) = SumT $ (fmap . fmap) asType cs'
         asType (RecordArrayArrayElem et e_shape) = Array als u et e_shape
 peelArray n (Array als u et shape) = do
@@ -312,8 +304,6 @@ arrayOfWithAliases (Record ts) as shape u = do
   ts' <- traverse typeToRecordArrayElem ts
   return $ Array as u (ArrayRecordElem ts') shape
 arrayOfWithAliases Arrow{} _ _ _ = Nothing
-arrayOfWithAliases (Enum cs) as shape u  =
-  Just $ Array as u (ArrayEnumElem cs) shape
 arrayOfWithAliases (SumT cs) as shape u = do
   cs' <- (traverse . traverse) typeToRecordArrayElem cs -- TODO: update name
   return $ Array as u (ArraySumElem cs') shape
@@ -330,8 +320,6 @@ typeToRecordArrayElem (Record ts') =
 typeToRecordArrayElem (Array _ _ et shape) =
   Just $ RecordArrayArrayElem et shape
 typeToRecordArrayElem Arrow{} = Nothing
-typeToRecordArrayElem (Enum cs) =
-  Just $ RecordArrayElem $ ArrayEnumElem cs
 typeToRecordArrayElem (SumT cs) =
   RecordArrayElem . ArraySumElem <$>
   (traverse . traverse) typeToRecordArrayElem cs
@@ -348,7 +336,6 @@ arrayElemToType (ArrayPolyElem bt targs) =
 arrayElemToType (ArrayRecordElem ts) =
   Record $ fmap recordArrayElemToType ts
 arrayElemToType (ArrayPrimElem bt) = Prim bt
-arrayElemToType (ArrayEnumElem cs) = Enum cs
 arrayElemToType (ArraySumElem cs) =
   SumT $ (fmap . fmap) recordArrayElemToType cs
 
@@ -362,9 +349,7 @@ typeToArrayElem (Record ts') =
 typeToArrayElem (Array _ _ et _) =
   Just $ et
 typeToArrayElem Arrow{} = Nothing
-typeToArrayElem (Enum cs) =
-  Just $ ArrayEnumElem cs
-typeTodArrayElem (SumT cs) =
+typeToArrayElem (SumT cs) =
   ArraySumElem <$>
   (traverse . traverse) typeToRecordArrayElem cs
 
@@ -536,7 +521,6 @@ typeOf (ProjectSection _ (Info t) _) =
   removeShapeAnnotations t
 typeOf (IndexSection _ (Info t) _) =
   removeShapeAnnotations t
-typeOf (VConstr0 _ (Info t) _)  = t
 typeOf (Constr _ _ (Info t) _)  = t
 typeOf (Match _ _ (Info t) _) = t
 
@@ -567,12 +551,10 @@ typeVars t =
       -- This local function is to avoid an ambiguous type.
       where f :: RecordArrayElemTypeBase dim -> TypeBase dim ()
             f = recordArrayElemToType
-    Array _ _ ArrayEnumElem{} _ -> mempty
     Array _ _ (ArraySumElem cs) _  ->
       foldMap (foldMap (typeVars . f)) cs
       where f :: RecordArrayElemTypeBase dim -> TypeBase dim ()
             f = recordArrayElemToType
-    Enum{} -> mempty
     SumT cs -> mconcat $ (foldMap . fmap) typeVars cs
   where typeVarFree = S.singleton . typeLeaf
         typeArgFree (TypeArgType ta _) = typeVars ta
@@ -601,7 +583,6 @@ returnType (TypeVar als Nonunique t targs) d arg =
 returnType (Arrow _ v t1 t2) d arg =
   Arrow als v (bimap id (const mempty) t1) (t2 `setAliases` als)
   where als = aliases $ maskAliases arg d
-returnType (Enum cs) _ _ = Enum cs
 returnType (SumT cs) d arg =
   SumT $ (fmap . fmap) (\et -> returnType et d arg) cs
 
@@ -611,13 +592,11 @@ concreteType Prim{} = True
 concreteType TypeVar{} = False
 concreteType Arrow{} = False
 concreteType (Record ts) = all concreteType ts
-concreteType Enum{} = True
 concreteType (SumT cs) =  (all . all) concreteType cs
 concreteType (Array _ _ at _) = concreteArrayType at
   where concreteArrayType ArrayPrimElem{}      = True
         concreteArrayType ArrayPolyElem{}      = False
         concreteArrayType (ArrayRecordElem ts) = all concreteRecordArrayElem ts
-        concreteArrayType ArrayEnumElem{}      = True
         concreteArrayType (ArraySumElem cs)    = (all . all) concreteRecordArrayElem cs
 
         concreteRecordArrayElem (RecordArrayElem et) = concreteArrayType et
@@ -632,7 +611,6 @@ orderZero Array{}         = True
 orderZero (Record fs)     = all orderZero $ M.elems fs
 orderZero TypeVar{}       = True
 orderZero Arrow{}         = False
-orderZero Enum{}          = True
 orderZero SumT{}          = True
 
 -- | Extract all the shape names that occur in a given pattern.

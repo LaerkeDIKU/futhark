@@ -801,16 +801,6 @@ internaliseExp desc (E.Stream (E.RedLike o comm lam0) lam arr _) = do
   w <- arraysSize 0 <$> mapM lookupType arrs
   letTupExp' desc $ I.Op $ I.Stream w form lam' arrs
 
-internaliseExp _ (E.VConstr0 c (Info t) loc) =
-  case t of
-    Enum cs ->
-      case elemIndex c $ sort cs of
-        Just i -> return [I.Constant $ I.IntValue $ intValue I.Int8 i]
-        _      -> fail $ "internaliseExp: invalid constructor: #" ++ nameToString c ++
-                         "\nfor enum at " ++ locStr loc ++ ": " ++ pretty t
-    _ -> fail $ "internaliseExp: nonsensical type for enum at "
-                ++ locStr loc ++ ": " ++ pretty t
-
 internaliseExp _ e@E.Constr{} =
   fail $ "internaliseExp: unexpected constructor at " ++ locStr (srclocOf e)
 
@@ -1755,8 +1745,6 @@ typeExpForError cm (E.TEApply t arg _) = do
   arg' <- case arg of TypeArgExpType argt -> typeExpForError cm argt
                       TypeArgExpDim d _   -> pure <$> dimDeclForError cm d
   return $ t' ++ [" "] ++ arg'
-typeExpForError _ e@E.TEEnum{} =
-  return [ErrorString $ pretty e]
 typeExpForError cm (E.TESum cs _) = do
   cs' <- mapM onClause $ map snd cs
   return $ intercalate [" | "] cs'

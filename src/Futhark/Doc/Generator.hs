@@ -378,9 +378,6 @@ synopsisValBindBind (name, BoundV tps t) = do
   t' <- typeHtml t
   return $ keyword "val " <> vnameHtml name <> joinBy " " tps' <> ": " <> t'
 
-prettyEnum :: [Name] -> Html
-prettyEnum cs = pipes $ map (("#"<>) . renderName) cs
-
 typeHtml :: StructType -> DocM Html
 typeHtml t = case t of
   Prim et -> return $ primTypeHtml et
@@ -408,7 +405,6 @@ typeHtml t = case t of
         parens (vnameHtml v <> ": " <> t1') <> " -> " <> t2'
       Nothing ->
         t1' <> " -> " <> t2'
-  Enum cs -> return $ prettyEnum cs
 
 prettyElem :: ArrayElemTypeBase (DimDecl VName) -> DocM Html
 prettyElem (ArrayPrimElem et) = return $ primTypeHtml et
@@ -423,7 +419,6 @@ prettyElem (ArrayRecordElem fs)
   where ppField (name, tp) = do
           tp' <- prettyRecordElem tp
           return $ toHtml (nameToString name) <> ": " <> tp'
-prettyElem (ArrayEnumElem cs) = return $ braces $ prettyEnum cs
 
 prettyRecordElem :: RecordArrayElemTypeBase (DimDecl VName) -> DocM Html
 prettyRecordElem (RecordArrayElem et) = prettyElem et
@@ -535,7 +530,6 @@ typeExpHtml e = case e of
         parens (vnameHtml v <> ": " <> t1') <> " -> " <> t2'
       Nothing ->
         t1' <> " -> " <> t2'
-  TEEnum cs _ -> return $ prettyEnum cs
 
 qualNameHtml :: QualName VName -> DocM Html
 qualNameHtml (QualName names vname@(VName name tag)) =

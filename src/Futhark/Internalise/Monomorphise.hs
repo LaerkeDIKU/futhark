@@ -1,5 +1,5 @@
 -- | This monomorphization module converts a well-typed, polymorphic,
--- module-free Futhark program into an equivalent monomorphic program.
+                           -- module-free Futhark program into an equivalent monomorphic program.
 --
 -- This pass also does a few other simplifications to make the job of
 -- subsequent passes easier.  Specifically, it does the following:
@@ -33,6 +33,8 @@ import           Data.List as L
 import           Data.Loc
 import qualified Data.Map.Strict as M
 import qualified Data.Semigroup as Sem
+
+
 import qualified Data.Sequence as Seq
 import           Data.Foldable
 
@@ -192,7 +194,7 @@ transformExp (LetPat tparams pat e1 e2 loc) = do
   LetPat tparams pat' <$> transformExp e1 <*>
     withRecordReplacements rr (transformExp e2) <*> pure loc
 
-transformExp exp@(LetFun fname (tparams, params, retdecl, Info ret, body) e loc)
+transformExp (LetFun fname (tparams, params, retdecl, Info ret, body) e loc)
   | any isTypeParam tparams = do
       -- Retrieve the lifted monomorphic function bindings that are produced,
       -- filter those that are monomorphic versions of the current let-bound
@@ -377,8 +379,6 @@ transformExp (Unsafe e1 loc) =
 transformExp (Assert e1 e2 desc loc) =
   Assert <$> transformExp e1 <*> transformExp e2 <*> pure desc <*> pure loc
 
-transformExp e@VConstr0{} = return e
-
 transformExp (Constr name es (Info t@(SumT cs)) loc) =
   case constrIndex name t of
     Nothing -> error "transFormExp: malformed constructor value."
@@ -404,8 +404,6 @@ defaultValue (Prim Bool) = Literal (BoolValue False) noLoc
 defaultValue (Prim (Unsigned s)) = Literal (UnsignedValue (intValue s (0 :: Int))) noLoc
 defaultValue (Prim (Signed s)) = Literal (SignedValue (intValue s (0 :: Int))) noLoc
 defaultValue (Prim (FloatType s)) = Literal (FloatValue (floatValue s (0 :: Int))) noLoc
-defaultValue t@(Enum (c:_)) = VConstr0 c (Info t) noLoc
-defaultValue (Enum []) = error "defaultVaule: empty enum type."
 defaultValue (SumT cs) = TupLit (defaultIndex : defaultClauses) noLoc
   where defaultIndex   =  Literal (UnsignedValue (intValue Int8 (0 :: Int))) noLoc
         defaultClauses = map defaultClause $ sortConstrs cs
@@ -593,7 +591,6 @@ typeSubsts t1@Array{} t2@Array{}
   | Just t1' <- peelArray (arrayRank t1) t1,
     Just t2' <- peelArray (arrayRank t1) t2 =
       typeSubsts t1' t2'
-typeSubsts Enum{} Enum{} = mempty
 typeSubsts (SumT cs1) (SumT cs2) =
   (mconcat . mconcat) $ zipWith typeSubstClause (sortConstrs cs1) (sortConstrs cs2)
   where typeSubstClause (_, ts1) (_, ts2) = zipWith typeSubsts ts1 ts2

@@ -382,12 +382,9 @@ defuncExp (Assert e1 e2 desc loc) = do
   (e2', sv) <- defuncExp e2
   return (Assert e1' e2' desc loc, sv)
 
-defuncExp e@VConstr0{} = return (e, Dynamic $ typeOf e)
-
 defuncExp Constr{} = error "defuncExp: unexpected constructor."
 
-defuncExp exp@(Match e cs t loc) = do
-  traceM' $ unlines ["defuncExp match", "exp: " ++ show exp]
+defuncExp (Match e cs t loc) = do
   (e', sv) <- defuncExp e
   csPairs  <- mapM (defuncCase sv) cs
   let cs' = map fst csPairs
@@ -879,7 +876,6 @@ freeVars expr = case expr of
   Unzip e _ _         -> freeVars e
   Unsafe e _          -> freeVars e
   Assert e1 e2 _ _    -> freeVars e1 <> freeVars e2
-  VConstr0{}          -> mempty
   Constr{}            -> error "freeVars: unexpected constructor."
   Match e cs _ _      -> freeVars e <> foldMap caseFV cs
     where caseFV (CasePat p eCase _) = (names (patternDimNames p) <> freeVars eCase)

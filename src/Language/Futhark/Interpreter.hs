@@ -86,14 +86,12 @@ data Value = ValuePrim !PrimValue
            | ValueArray !(Array Int Value)
            | ValueRecord (M.Map Name Value)
            | ValueFun (Value -> EvalM Value)
-           | ValueEnum Name
            | ValueSum Name [Value]
 
 instance Eq Value where
   ValuePrim x == ValuePrim y = x == y
   ValueArray x == ValueArray y = x == y
   ValueRecord x == ValueRecord y = x == y
-  ValueEnum x == ValueEnum y = x == y
   (ValueSum n1 vs1) == (ValueSum n2 vs2) = n1 == n2 && vs1 == vs2
   _ == _ = False
 
@@ -117,7 +115,6 @@ instance Pretty Value where
 
   ppr (ValueRecord m) = prettyRecord m
   ppr ValueFun{} = text "#<fun>"
-  ppr (ValueEnum n) = text "#" <> ppr n
   ppr (ValueSum n vs) = text "#" <> ppr n <+> sep (map ppr vs)
 
 -- | Create an array value; failing if that would result in an
@@ -533,7 +530,6 @@ evalType env t@(TypeVar () _ tn args) =
           t'' <- evalType env t'
           return (mempty, M.singleton p $ T.TypeAbbr l [] t'')
         matchPtoA _ _ = return mempty
-evalType _ (Enum cs) = return $ Enum cs
 evalType env (SumT cs) = SumT <$> (traverse . traverse) (evalType env) cs
 
 eval :: Env -> Exp -> EvalM Value
@@ -772,14 +768,6 @@ eval env (Assert what e (Info s) loc) = do
   cond <- asBool <$> eval env what
   unless cond $ bad loc env s
   eval env e
-
-eval _ (VConstr0 c _ _) = return $ ValueEnum c
-
---eval _ (VConstr0 c _ _) = return $ ValueSum c Nothing
---
---eval env (VConstr1 c e _ _) = do
---  v <- eval env e
---  return $ ValueSum c (Just v)
 
 eval env (Constr c es _ _) = do
   vs <- mapM (eval env) es

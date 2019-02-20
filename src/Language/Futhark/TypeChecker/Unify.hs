@@ -11,7 +11,6 @@ module Language.Futhark.TypeChecker.Unify
 
   , zeroOrderType
   , mustHaveConstr
-  , mustHaveConstr'
   , mustHaveField
   , mustBeOneOf
   , equalityType
@@ -49,8 +48,7 @@ data Constraint = NoConstraint (Maybe Liftedness) SrcLoc
                 | Overloaded [PrimType] SrcLoc
                 | HasFields (M.Map Name (TypeBase () ())) SrcLoc
                 | Equality SrcLoc
-                | HasConstrs [Name] SrcLoc
-                | HasConstrs' (M.Map Name [TypeBase () ()]) SrcLoc
+                | HasConstrs (M.Map Name [TypeBase () ()]) SrcLoc
                 deriving Show
 
 instance Located Constraint where
@@ -61,7 +59,6 @@ instance Located Constraint where
   locOf (HasFields _ loc) = locOf loc
   locOf (Equality loc) = locOf loc
   locOf (HasConstrs _ loc) = locOf loc
-  locOf (HasConstrs' _ loc) = locOf loc
 
 lookupSubst :: VName -> Constraints -> Maybe (Subst (TypeBase () ()))
 lookupSubst v constraints = case M.lookup v constraints of
@@ -175,9 +172,8 @@ applySubstInConstraint _ _ (NoConstraint l loc) = NoConstraint l loc
 applySubstInConstraint _ _ (Overloaded ts loc) = Overloaded ts loc
 applySubstInConstraint _ _ (Equality loc) = Equality loc
 applySubstInConstraint _ _ (ParamType l loc) = ParamType l loc
-applySubstInConstraint _ _ (HasConstrs ns loc) = HasConstrs ns loc
-applySubstInConstraint vn tp (HasConstrs' cs loc) =
-  HasConstrs' (M.map (map (applySubst (flip M.lookup $ M.singleton vn $ Subst tp))) cs) loc
+applySubstInConstraint vn tp (HasConstrs cs loc) =
+  HasConstrs (M.map (map (applySubst (flip M.lookup $ M.singleton vn $ Subst tp))) cs) loc
 
 linkVarToType :: MonadUnify m => SrcLoc -> VName -> TypeBase () () -> m ()
 linkVarToType loc vn tp = do
@@ -225,23 +221,7 @@ linkVarToType loc vn tp = do
                        pretty tp ++ "' (must be a record with fields {" ++
                        required_fields' ++
                        "} due to use at " ++ locStr old_loc ++ ")."
-              Just (HasConstrs cs old_loc) ->
-                case tp of
-                  Enum t_cs
-                    | intersect cs t_cs == cs -> return ()
-                    | otherwise -> typeError loc $
-                       "Cannot unify `" ++ prettyName vn ++ "' with type `"
-                       ++ pretty tp ++ "'"
-                  TypeVar _ _ (TypeName [] v) []
-                    | not $ isRigid v constraints ->
-                        let addConstrs (HasConstrs cs' loc') (HasConstrs cs'' _) =
-                              HasConstrs (cs' `union` cs'') loc'
-                            addConstrs c _ = c
-                        in modifyConstraints $ M.insertWith addConstrs v $
-                           HasConstrs cs old_loc
-                  _ -> typeError loc "Cannot unify."
-
-              Just (HasConstrs' required_cs old_loc) ->
+              Just (HasConstrs required_cs old_loc) ->
                 case tp of
                   SumT ts
                     | all (`M.member` ts) $ M.keys required_cs ->
@@ -250,9 +230,9 @@ linkVarToType loc vn tp = do
                   TypeVar _ _ (TypeName [] v) []
                     | not $ isRigid v constraints -> do
                         modifyConstraints $ M.insertWith combineConstrs v $
-                                   HasConstrs' required_cs old_loc
-                        where combineConstrs (HasConstrs' cs1 loc) (HasConstrs' cs2 _) =
-                                HasConstrs' (M.union cs1 cs2) loc
+                                   HasConstrs required_cs old_loc
+                        where combineConstrs (HasConstrs cs1 loc1) (HasConstrs cs2 _) =
+                                HasConstrs (M.union cs1 cs2) loc1
                               combineConstrs hasCs _ = hasCs
                   _ -> typeError loc "Can't unify." -- TODO : Improve
               _ -> return ()
@@ -319,8 +299,6 @@ equalityType loc t = do
               modifyConstraints $ M.insert vn (Equality loc)
             Just (Overloaded _ _) ->
               return () -- All primtypes support equality.
-            Just HasConstrs{} ->
-              return ()
             _ ->
               typeError loc $ "Type " ++ pretty (prettyName vn) ++
               " does not support equality."
@@ -349,37 +327,17 @@ zeroOrderType loc desc t = do
             _ -> return ()
 
 mustHaveConstr :: MonadUnify m =>
-                  SrcLoc -> Name -> TypeBase dim as -> m ()
-mustHaveConstr loc c t = do
-  constraints <- getConstraints
-  case t of
-    TypeVar _ _ (TypeName _ tn) []
-      | Just NoConstraint{} <- M.lookup tn constraints ->
-          modifyConstraints $ M.insert tn $ HasConstrs [c] loc
-      | Just (HasConstrs cs _) <- M.lookup tn constraints ->
-          if c `elem` cs
-          then return ()
-          else modifyConstraints $ M.insert tn $ HasConstrs (c:cs) loc
-    Enum cs
-      | c `elem` cs -> return ()
-      | otherwise   -> throwError $ TypeError loc $
-                       "Type " ++ pretty (toStructural t) ++
-                       " does not have a " ++ pretty c ++ " constructor."
-    _ -> do unify loc (toStructural t) $ Enum [c]
-            return ()
-
-mustHaveConstr' :: MonadUnify m =>
                   SrcLoc -> Name -> TypeBase dim as -> [TypeBase () ()] -> m ()
-mustHaveConstr' loc c t fs = do
+mustHaveConstr loc c t fs = do
   let struct_f = toStructural <$> fs
   constraints <- getConstraints
   case t of
     TypeVar _ _ (TypeName _ tn) []
       | Just NoConstraint{} <- M.lookup tn constraints ->
-          modifyConstraints $ M.insert tn $ HasConstrs' (M.singleton c struct_f) loc
-      | Just (HasConstrs' cs _) <- M.lookup tn constraints ->
+          modifyConstraints $ M.insert tn $ HasConstrs (M.singleton c struct_f) loc
+      | Just (HasConstrs cs _) <- M.lookup tn constraints ->
         case M.lookup c cs of
-          Nothing  -> modifyConstraints $ M.insert tn $ HasConstrs' (M.insert c fs cs) loc
+          Nothing  -> modifyConstraints $ M.insert tn $ HasConstrs (M.insert c fs cs) loc
           Just fs'
             | length fs == length fs' -> zipWithM_ (unify loc) fs fs'
             | otherwise -> throwError $ TypeError loc "Differing constructor arity" -- TODO: Improve

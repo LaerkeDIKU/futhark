@@ -867,8 +867,6 @@ newNamesForMTy orig_mty = do
           Prim t
         substituteInType (Record ts) =
           Record $ fmap substituteInType ts
-        substituteInType (Enum cs) =
-          Enum cs
         substituteInType (SumT ts) =
           SumT $ (fmap . fmap) substituteInType ts
         substituteInType (Array () u (ArrayPrimElem t) shape) =
@@ -883,8 +881,6 @@ newNamesForMTy orig_mty = do
           in case arrayOf (Record ts') (substituteInShape shape) u of
             Just t' -> t'
             _ -> error "substituteInType: Cannot create array after substitution."
-        substituteInType (Array () u (ArrayEnumElem cs) shape) =
-          Array () u (ArrayEnumElem cs) (substituteInShape shape)
         substituteInType (Array () u (ArraySumElem cs) shape) =
           let cs' = (fmap .fmap) (substituteInType . recordArrayElemToType) cs
           in case arrayOf (SumT cs') (substituteInShape shape) u of

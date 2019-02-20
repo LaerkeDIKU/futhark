@@ -18,7 +18,7 @@ import Language.Futhark.Syntax
 import Language.Futhark.Attributes
 import Language.Futhark.Pretty
 
-import Debug.Trace
+--import Debug.Trace
 
 traceM' :: Applicative f => String -> f ()
 traceM' = const $ pure ()
