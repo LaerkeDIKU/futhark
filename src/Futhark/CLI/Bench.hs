@@ -45,11 +45,12 @@ data BenchOptions = BenchOptions
                    , optExcludeCase :: [String]
                    , optIgnoreFiles :: [Regex]
                    , optEntryPoint :: Maybe String
+                   , optTuning :: Maybe String
                    }
 
 initialBenchOptions :: BenchOptions
 initialBenchOptions = BenchOptions "c" "futhark" "" 10 [] Nothing (-1) False
-                      ["nobench", "disable"] [] Nothing
+                      ["nobench", "disable"] [] Nothing Nothing
 
 -- | The name we use for compiled programs.
 binaryName :: FilePath -> FilePath
@@ -228,9 +229,17 @@ runBenchmarkCase opts program entry pad_to tr@(TestRun _ input_spec (Succeeds ex
         | null $ optRunner opts = ("." </> binaryName program, options)
         | otherwise = (optRunner opts, binaryName program : options)
 
+  tuning_args <- case optTuning opts of
+                   Nothing -> return []
+                   Just ext -> do
+                     exists <- doesFileExist (program <.> ext)
+                     if exists
+                       then return ["--tuning", program <.> ext]
+                       else return []
+
   run_res <-
     timeout (optTimeout opts * 1000000) $
-    readProcessWithExitCode to_run to_run_args $
+    readProcessWithExitCode to_run (to_run_args ++ tuning_args) $
     LBS.toStrict input
 
   fmap (Just . DataResult dataset_desc) $ runBenchM $ case run_res of
@@ -368,6 +377,13 @@ commandLineOptions = [
                 config { optEntryPoint = Just s })
       "NAME")
     "Only run this entry point."
+  , Option [] ["tuning"]
+    (ReqArg (\s -> Right $ \config -> config { optTuning = Just s })
+    "EXTENSION")
+    "Look for tuning files with this extension (defaults: .tuning)."
+  , Option [] ["no-tuning"]
+    (NoArg $ Right $ \config -> config { optTuning = Nothing })
+    "Do not load tuning files."
   ]
   where max_timeout :: Int
         max_timeout = maxBound `div` 1000000
