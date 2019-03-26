@@ -36,7 +36,7 @@ if echo "$commit" | grep -q modified; then
     exit 1
 fi
 
-inrepo stack --resolver nightly build
+inrepo stack build
 inrepo make -C docs man
 binpath=$(inrepo stack path --local-install-root)/bin
 
