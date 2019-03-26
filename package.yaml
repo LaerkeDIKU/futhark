@@ -16,7 +16,7 @@ license: ISC
 github: diku-dk/futhark
 category: Language
 
-ghc-options: -Wall -Wcompat -Wredundant-constraints -Wincomplete-record-updates -Wmissing-export-lists -static -fPIC
+ghc-options: -Wall -Wcompat -Wredundant-constraints -Wincomplete-record-updates -Wmissing-export-lists #-static -fPIC -fllwm
 
 extra-source-files:
   - rts/python/*.py
@@ -109,3 +109,4 @@ tests:
       - tasty-hunit
       - megaparsec
       - parser-combinators
+# stack build --ghc-options="-fPIC" --configure-options="ld-options: -static"
