@@ -15,7 +15,6 @@ if [ $# -lt 2 ]; then
     echo "Defaulting suffix to $suffix."
 fi
 
-
 skeletondir=$repodir/tools/release/skeleton
 tmpdir=$(mktemp -d)
 tarballdir=$tmpdir/futhark$suffix
@@ -37,7 +36,7 @@ if echo "$commit" | grep -q modified; then
     exit 1
 fi
 
-inrepo stack build
+inrepo stack --resolver nightly build
 inrepo make -C docs man
 binpath=$(inrepo stack path --local-install-root)/bin
 

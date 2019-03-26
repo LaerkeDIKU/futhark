@@ -1163,7 +1163,9 @@ cliEntryPoint fname (Function _ _ _ _ results args) = do
   let run_it = [C.citems|
                   int r;
                   /* Run the program once. */
+                  trans_start = get_wall_time();
                   $stms:pack_input
+                  trans_end = get_wall_time();
                   assert($id:sync_ctx(ctx) == 0);
                   t_start = get_wall_time();
                   r = $id:entry_point_function_name(ctx,
@@ -1174,15 +1176,22 @@ cliEntryPoint fname (Function _ _ _ _ results args) = do
                   }
                   assert($id:sync_ctx(ctx) == 0);
                   t_end = get_wall_time();
+                  long elapsed_trans = trans_end - trans_start;
                   long int elapsed_usec = t_end - t_start;
                   if (time_runs && runtime_file != NULL) {
-                    fprintf(runtime_file, "%lld\n", (long long) elapsed_usec);
+                    fprintf(runtime_file, "transfer time: %lld\nuse time: %lld\n", (long long) elapsed_trans, (long long) elapsed_usec);
                   }
+                  res_start = get_wall_time();
                   $stms:free_input
+                  res_end = get_wall_time();
+                  long elapsed_res = res_end - res_start;
+                  if (time_runs && runtime_file != NULL) {
+                    fprintf(runtime_file, "transfer time from gpu: %lld\n", (long long) elapsed_res);
+                  }
                 |]
 
   return ([C.cedecl|static void $id:cli_entry_point_function_name($ty:ctx_ty *ctx) {
-    typename int64_t t_start, t_end;
+    typename int64_t t_start, t_end, trans_start, trans_end, res_start, res_end;
     int time_runs;
 
     /* Declare and read input. */
