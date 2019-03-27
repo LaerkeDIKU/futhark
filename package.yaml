@@ -16,7 +16,7 @@ license: ISC
 github: diku-dk/futhark
 category: Language
 
-ghc-options: -Wall -Wcompat -Wredundant-constraints -Wincomplete-record-updates -Wmissing-export-lists #-static -fPIC -fllwm
+ghc-options: -Wall -Wcompat -Wredundant-constraints -Wincomplete-record-updates -Wmissing-export-lists -static -fPIC -fllvm #-l tinfo5.9
 
 extra-source-files:
   - rts/python/*.py
@@ -25,6 +25,9 @@ extra-source-files:
   - rts/futhark-doc/*.css
 
   - futlib/*.fut
+
+# extra-libraries:
+#   - libtinfo5
 
 library:
   dependencies:
@@ -91,6 +94,7 @@ executables:
       - base
       - futhark
       - text
+      # - ncurses
     ghc-options: -threaded -rtsopts "-with-rtsopts=-N -qg"
 
 tests:
